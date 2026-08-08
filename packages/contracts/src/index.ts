@@ -1,4 +1,28 @@
 export {
+  DESKTOP_EVENT_SCHEMA,
+  DESKTOP_PROTOCOL_VERSION,
+  DESKTOP_REQUEST_SCHEMA,
+  DESKTOP_RESPONSE_SCHEMA,
+  type DesktopError,
+  type DesktopErrorFields,
+  type DesktopEvent,
+  type DesktopEventFields,
+  type DesktopFailureResponse,
+  type DesktopFailureResponseFields,
+  DesktopMessageValidationError,
+  type DesktopProjectContext,
+  type DesktopProjectContextFields,
+  type DesktopRequest,
+  type DesktopRequestFields,
+  type DesktopResponse,
+  type DesktopSuccessResponse,
+  type DesktopSuccessResponseFields,
+  parseDesktopEvent,
+  parseDesktopRequest,
+  parseDesktopResponse,
+} from './desktop.js';
+
+export {
   parseProjectManifest,
   PROJECT_LAYOUT_VERSION,
   PROJECT_MANIFEST_SCHEMA,

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxweaver.local/schemas/desktop-event.schema.json",
+  "title": "VoxWeaver desktop event envelope",
+  "type": "object",
+  "required": [
+    "protocolVersion",
+    "eventId",
+    "eventType",
+    "occurredAt",
+    "payload"
+  ],
+  "properties": {
+    "protocolVersion": {
+      "const": "1"
+    },
+    "eventId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "eventType": {
+      "type": "string",
+      "minLength": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectSessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": {
+      "$ref": "#/$defs/jsonValue"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "jsonValue": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        }
+      ]
+    }
+  }
+}
