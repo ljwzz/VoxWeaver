@@ -7,7 +7,9 @@ const filenameCaseOptions = {
   },
   ignore: [
     '.*.config.*',
+    'app-core',
     'package.json',
+    'project-workspace',
     '[a-z]+.[jt]s',
     '[a-z]+.d.ts',
   ],
@@ -54,7 +56,10 @@ export default antfu({
   })
   .append({
     name: 'local:built-package-tests',
-    files: ['packages/*/test/**/*.test.mjs'],
+    files: [
+      'packages/*/test/**/*.test.mjs',
+      'services/*/test/**/*.test.mjs',
+    ],
     rules: {
       'antfu/no-import-dist': 'off',
       'test/no-import-node-test': 'off',

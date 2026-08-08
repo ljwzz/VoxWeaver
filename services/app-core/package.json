@@ -1,5 +1,5 @@
 {
-  "name": "@voxweaver/common",
+  "name": "@voxweaver/app-core",
   "type": "module",
   "version": "0.0.0",
   "private": true,
@@ -14,9 +14,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "clean": "rimraf dist ../../node_modules/.cache/voxweaver/common.tsbuildinfo",
+    "clean": "rimraf dist ../../node_modules/.cache/voxweaver/app-core.tsbuildinfo",
     "test": "tsc -p tsconfig.json && node --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:source": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@voxweaver/application": "workspace:*",
+    "@voxweaver/contracts": "workspace:*",
+    "@voxweaver/project-workspace": "workspace:*"
   }
 }

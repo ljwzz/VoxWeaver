@@ -17,3 +17,7 @@
 每个 schema 必须声明 `$schema`、`$id` 和业务版本，并有合法、非法和兼容性测试夹具。
 
 采用的规范版本见 [plan/README.md](../../plan/README.md)。
+
+## 已定义契约
+
+- `project-manifest.schema.json`：阶段 00 项目根目录 `project.json` 的首版契约。

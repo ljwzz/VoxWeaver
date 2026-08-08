@@ -13,7 +13,7 @@
     "lint:js": "eslint .",
     "lint:js:fix": "eslint . --fix",
     "test": "pnpm -r --if-present run test",
-    "typecheck": "pnpm -r --if-present run typecheck"
+    "typecheck": "pnpm run build && pnpm -r --if-present run typecheck:source"
   },
   "devDependencies": {
     "@antfu/eslint-config": "9.3.0",

@@ -30,7 +30,33 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
+  packages/application:
+    dependencies:
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
   packages/common: {}
+
+  packages/contracts: {}
+
+  packages/project-workspace:
+    dependencies:
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  services/app-core:
+    dependencies:
+      '@voxweaver/application':
+        specifier: workspace:*
+        version: link:../../packages/application
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@voxweaver/project-workspace':
+        specifier: workspace:*
+        version: link:../../packages/project-workspace
 
 packages:
 
