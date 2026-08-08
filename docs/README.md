@@ -1,8 +1,8 @@
 # VoxWeaver 规格索引
 
 状态：正式规格入口
-人工决策：[todoe-check.md](../todoe-check.md)
-无人值守规则：[无人值守执行协议](./无人值守执行协议.md)
+
+人工决策、Gate 关闭证据和无人值守执行约束均内化在对应架构或里程碑执行规格中；不存在独立的跨文件决策入口。
 
 ## 1. 权威关系
 
@@ -29,8 +29,11 @@ docs/milestones/ + 任务卡
 - `docs/ideas/` 只保存未批准想法，不属于正式规格，不迁入本目录。
 - `docs/adr/` 保留已批准决策，不因规格迁移而改变状态。
 - `项目计划.md` 仍是产品范围的唯一主文档。
-- 完整权威顺序以 [无人值守执行协议第 2 节](./无人值守执行协议.md#2-权威顺序) 为唯一定义；里程碑文件不得自定另一套顺序。
-- `todoe-check.md` 保存候选策略、批量确认记录和仍缺的执行输入。已确认候选冻结产品策略，但 Provider、版本、阈值、ADR 和 live 证据未齐时对应 Gate 仍保持 `open`。
+- 上图即完整权威顺序。低层文件不得静默覆盖高层文件；冲突无法通过收窄范围解决时，任务必须标记为 `blocked`。
+- `draft` 架构规格只提供与上位范围、accepted ADR 和 schema 一致的辅助约束，不得独立覆盖正式规格。
+- 每个 Decision Gate 必须在对应架构或里程碑规格内同时记录状态、已选策略、直接阻塞项、关闭证据和 Gate 打开时的唯一派发白名单。
+- 已选策略冻结不等于 Gate 关闭。Provider、版本、阈值、accepted ADR、runtime profile、授权夹具或 live 证据任一未齐时，Gate 必须保持 `open`，执行模型不得猜测或补选。
+- Gate 打开时只能派发其白名单任务；关闭跨里程碑 Gate 也不自动授权尚未拆成原子任务卡的实现。
 
 ## 2. 目录
 
@@ -41,15 +44,14 @@ docs/milestones/ + 任务卡
 | [architecture/](./architecture/) | 进程、接口、安全、恢复和桌面架构 | 按文件状态 |
 | [schemas/](./schemas/) | JSON Schema 与版本化机器契约 | 是 |
 | [spec/](./spec/) | 阶段 00～11 与 MVP 联调规格 | 是 |
-| [milestones/](./milestones/) | M1～M8 小模型原子执行规格 | 是 |
-| [无人值守执行协议.md](./无人值守执行协议.md) | 派发、门禁、并发、验证和交接规则 | 是 |
+| [milestones/](./milestones/) | M1～M8 自包含的小模型原子执行规格，含决策、派发、并发、验证和交接约束 | 是 |
 | [里程碑追踪矩阵.md](./里程碑追踪矩阵.md) | 里程碑、阶段、输入输出和状态映射 | 是 |
 
 ## 3. 架构规格
 
 - [Electron 桌面应用架构](./architecture/electron-desktop-architecture.md)（`draft`）
 
-架构规格中的待决策项必须引用 `todoe-check.md`；已经由 accepted ADR 或当前工具链关闭的事项不得重复进入待办。该架构文档当前为 `draft`，只能在与上位范围、accepted ADR 和 schema 一致时提供设计约束，不得覆盖它们。
+跨里程碑待决策项、已选策略和关闭证据直接记录在架构规格第 19 节；已经由 accepted ADR 或当前工具链关闭的事项不得重复进入 Gate。该架构文档当前为 `draft`，只能在与上位范围、accepted ADR 和 schema 一致时提供设计约束，不得覆盖它们。
 
 ## 4. 阶段规格
 
