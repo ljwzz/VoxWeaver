@@ -1,0 +1,27 @@
+{
+  "name": "voxweaver",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.20.0",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "pnpm -r --if-present run build",
+    "check": "pnpm run lint && pnpm run build && pnpm run test",
+    "clean": "pnpm -r --if-present run clean",
+    "lint": "pnpm run lint:js && pnpm run typecheck",
+    "lint:js": "eslint .",
+    "lint:js:fix": "eslint . --fix",
+    "test": "pnpm -r --if-present run test",
+    "typecheck": "pnpm -r --if-present run typecheck"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "9.3.0",
+    "@types/node": "26.1.2",
+    "eslint": "10.8.0",
+    "eslint-plugin-format": "2.0.1",
+    "globals": "17.9.0",
+    "rimraf": "^6.1.3",
+    "typescript": "6.0.3"
+  }
+}
