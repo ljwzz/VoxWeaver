@@ -1,37 +1,75 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+
+import addFormats from 'ajv-formats';
+import Ajv2020 from 'ajv/dist/2020.js';
 
 import {
   parseProjectManifest,
+  PROJECT_MANIFEST_SCHEMA,
   ProjectManifestValidationError,
 } from '../dist/index.js';
 
-const validManifest = {
-  schemaVersion: 1,
-  layoutVersion: 1,
-  projectId: '9451cf18-18c8-4ddd-98b2-28ab65fb85b5',
-  displayName: 'Demo Project',
-  directoryName: 'demo-project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5',
-  createdAt: '2026-08-08T00:00:00.000Z',
-  updatedAt: '2026-08-08T00:00:00.000Z',
-};
+const fixtures = await readJson(
+  new URL('./fixtures/project-manifest.fixtures.json', import.meta.url),
+);
+const documentedSchema = await readJson(
+  new URL('../../../docs/schemas/project-manifest.schema.json', import.meta.url),
+);
 
-test('parses a valid project manifest and preserves unknown fields', () => {
-  const input = { ...validManifest, futureField: { enabled: true } };
-
-  assert.equal(parseProjectManifest(input), input);
+test('keeps the documented schema equal to the runtime schema', () => {
+  assert.deepEqual(documentedSchema, PROJECT_MANIFEST_SCHEMA);
 });
 
-test('rejects unsupported manifest versions', () => {
+test('keeps documented schema validation and runtime parsing aligned', () => {
+  const ajv = new Ajv2020({ allErrors: true });
+  addFormats(ajv);
+  const validateDocumentedSchema = ajv.compile(documentedSchema);
+
+  for (const fixture of fixtures) {
+    const schemaAccepts = validateDocumentedSchema(fixture.manifest);
+    const parserAccepts = acceptsManifest(fixture.manifest);
+
+    assert.equal(
+      schemaAccepts,
+      fixture.valid,
+      `${fixture.name}: documented schema result`,
+    );
+    assert.equal(
+      parserAccepts,
+      schemaAccepts,
+      `${fixture.name}: runtime parser result`,
+    );
+  }
+});
+
+test('preserves unknown fields', () => {
+  const input = {
+    ...fixtures.find(fixture => fixture.name === 'valid with unknown fields').manifest,
+  };
+
+  assert.equal(parseProjectManifest(input), input);
+  assert.deepEqual(input.futureField, { enabled: true });
+});
+
+test('throws the domain validation error for an invalid manifest', () => {
   assert.throws(
-    () => parseProjectManifest({ ...validManifest, schemaVersion: 2 }),
+    () => parseProjectManifest({}),
     ProjectManifestValidationError,
   );
 });
 
-test('rejects a directory name that does not belong to the project ID', () => {
-  assert.throws(
-    () => parseProjectManifest({ ...validManifest, directoryName: 'other-project' }),
-    /must end with the project ID/,
-  );
-});
+function acceptsManifest(manifest) {
+  try {
+    parseProjectManifest(manifest);
+    return true;
+  } catch (error) {
+    assert.ok(error instanceof ProjectManifestValidationError);
+    return false;
+  }
+}
+
+async function readJson(url) {
+  return JSON.parse(await readFile(url, 'utf8'));
+}

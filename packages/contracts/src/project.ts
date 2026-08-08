@@ -1,3 +1,11 @@
+import type { JSONSchemaType } from 'ajv/dist/2020.js';
+
+import addFormatsModule from 'ajv-formats';
+import Ajv2020Module from 'ajv/dist/2020.js';
+
+const Ajv2020 = Ajv2020Module.default;
+const addFormats = addFormatsModule.default;
+
 export const PROJECT_MANIFEST_SCHEMA_VERSION = 1 as const;
 export const PROJECT_LAYOUT_VERSION = 1 as const;
 
@@ -18,11 +26,58 @@ export interface ProjectContext {
   manifest: ProjectManifest;
 }
 
-const UUID_V4_PATTERN
-  = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const PROJECT_MANIFEST_SCHEMA = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://voxweaver.local/schemas/project-manifest.schema.json',
+  title: 'VoxWeaver project manifest',
+  type: 'object',
+  required: [
+    'schemaVersion',
+    'layoutVersion',
+    'projectId',
+    'displayName',
+    'directoryName',
+    'createdAt',
+    'updatedAt',
+  ],
+  properties: {
+    schemaVersion: {
+      type: 'integer',
+      const: PROJECT_MANIFEST_SCHEMA_VERSION,
+    },
+    layoutVersion: {
+      type: 'integer',
+      const: PROJECT_LAYOUT_VERSION,
+    },
+    projectId: {
+      type: 'string',
+      pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+    },
+    displayName: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 120,
+      pattern: '^(?!\\s)(?![\\s\\S]*\\u0000)[\\s\\S]*\\S$',
+    },
+    directoryName: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 160,
+      pattern: '^(?!\\s)(?![\\s\\S]*[\\\\/\\u0000])[\\s\\S]+--[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+    },
+    createdAt: {
+      type: 'string',
+      format: 'date-time',
+    },
+    updatedAt: {
+      type: 'string',
+      format: 'date-time',
+    },
+  },
+  additionalProperties: true,
+} as const satisfies JSONSchemaType<ProjectManifestFields>;
 
-const RFC_3339_PATTERN
-  = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const manifestValidator = createManifestValidator();
 
 export class ProjectManifestValidationError extends Error {
   readonly code = 'PROJECT_MANIFEST_INVALID';
@@ -33,105 +88,28 @@ export class ProjectManifestValidationError extends Error {
   }
 }
 
+/**
+ * Validates the serialized manifest shape. Cross-field and filesystem
+ * invariants are enforced by the project workspace.
+ */
 export function parseProjectManifest(value: unknown): ProjectManifest {
-  if (!isRecord(value))
-    throw new ProjectManifestValidationError('Project manifest must be an object.');
-
-  assertLiteral(value, 'schemaVersion', PROJECT_MANIFEST_SCHEMA_VERSION);
-  assertLiteral(value, 'layoutVersion', PROJECT_LAYOUT_VERSION);
-  assertUuid(value, 'projectId');
-  assertTrimmedString(value, 'displayName', 120);
-  assertDirectoryName(value, 'directoryName');
-  assertTimestamp(value, 'createdAt');
-  assertTimestamp(value, 'updatedAt');
-
-  if (!value.directoryName.endsWith(`--${value.projectId}`)) {
+  if (!manifestValidator.validate(value)) {
     throw new ProjectManifestValidationError(
-      'Project directory name must end with the project ID.',
+      manifestValidator.ajv.errorsText(manifestValidator.validate.errors, {
+        dataVar: 'Project manifest',
+      }),
     );
   }
 
   return value as ProjectManifest;
 }
 
-function assertDirectoryName<const TField extends string>(
-  value: Record<string, unknown>,
-  field: TField,
-): asserts value is Record<string, unknown> & Record<TField, string> {
-  assertTrimmedString(value, field, 160);
+function createManifestValidator() {
+  const ajv = new Ajv2020({ allErrors: true });
+  addFormats(ajv);
 
-  const directoryName = value[field];
-  if (
-    directoryName === '.'
-    || directoryName === '..'
-    || directoryName.includes('/')
-    || directoryName.includes('\\')
-    || directoryName.includes('\0')
-  ) {
-    throw new ProjectManifestValidationError(
-      `Project manifest field "${field}" is not a safe directory name.`,
-    );
-  }
-}
-
-function assertLiteral<const TField extends string, const TValue extends number>(
-  value: Record<string, unknown>,
-  field: TField,
-  expected: TValue,
-): asserts value is Record<string, unknown> & Record<TField, TValue> {
-  if (value[field] !== expected) {
-    throw new ProjectManifestValidationError(
-      `Project manifest field "${field}" must be ${expected}.`,
-    );
-  }
-}
-
-function assertTimestamp<const TField extends string>(
-  value: Record<string, unknown>,
-  field: TField,
-): asserts value is Record<string, unknown> & Record<TField, string> {
-  const timestamp = value[field];
-  if (
-    typeof timestamp !== 'string'
-    || !RFC_3339_PATTERN.test(timestamp)
-    || !Number.isFinite(Date.parse(timestamp))
-  ) {
-    throw new ProjectManifestValidationError(
-      `Project manifest field "${field}" must be an RFC 3339 timestamp.`,
-    );
-  }
-}
-
-function assertTrimmedString<const TField extends string>(
-  value: Record<string, unknown>,
-  field: TField,
-  maximumLength: number,
-): asserts value is Record<string, unknown> & Record<TField, string> {
-  const fieldValue = value[field];
-  if (
-    typeof fieldValue !== 'string'
-    || fieldValue.length === 0
-    || fieldValue !== fieldValue.trim()
-    || Array.from(fieldValue).length > maximumLength
-  ) {
-    throw new ProjectManifestValidationError(
-      `Project manifest field "${field}" must be a non-empty trimmed string.`,
-    );
-  }
-}
-
-function assertUuid<const TField extends string>(
-  value: Record<string, unknown>,
-  field: TField,
-): asserts value is Record<string, unknown> & Record<TField, string> {
-  const identifier = value[field];
-  if (typeof identifier !== 'string' || !UUID_V4_PATTERN.test(identifier)) {
-    throw new ProjectManifestValidationError(
-      `Project manifest field "${field}" must be a UUID v4 string.`,
-    );
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return {
+    ajv,
+    validate: ajv.compile<ProjectManifestFields>(PROJECT_MANIFEST_SCHEMA),
+  };
 }

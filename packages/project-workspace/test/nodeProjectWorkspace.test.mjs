@@ -1,5 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -78,6 +87,57 @@ test('does not merge with or overwrite an existing project directory', async () 
   }
 });
 
+test('does not overwrite a target created during the commit window and cleans staging', async () => {
+  const parentDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-workspace-'));
+  const directoryName = `demo--${PROJECT_ID}`;
+  const projectDirectory = join(parentDirectory, directoryName);
+
+  try {
+    const workspace = new NodeProjectWorkspace({
+      generateProjectId: () => PROJECT_ID,
+      now: () => {
+        mkdirSync(projectDirectory);
+        writeFileSync(join(projectDirectory, 'keep.txt'), 'competitor', 'utf8');
+        return new Date(CREATED_AT);
+      },
+    });
+
+    await assert.rejects(
+      workspace.createProject({ displayName: 'Demo', parentDirectory }),
+      error =>
+        error instanceof ProjectWorkspaceError
+        && error.code === 'PROJECT_ALREADY_EXISTS',
+    );
+
+    assert.equal(
+      await readFile(join(projectDirectory, 'keep.txt'), 'utf8'),
+      'competitor',
+    );
+    assert.deepEqual(await readdir(parentDirectory), [directoryName]);
+  } finally {
+    await rm(parentDirectory, { force: true, recursive: true });
+  }
+});
+
+test('rejects a NUL display name before creating a workspace', async () => {
+  const parentDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-workspace-'));
+
+  try {
+    await assert.rejects(
+      createWorkspace().createProject({
+        displayName: 'Demo\0Project',
+        parentDirectory,
+      }),
+      error =>
+        error instanceof ProjectWorkspaceError
+        && error.code === 'PROJECT_NAME_INVALID',
+    );
+    assert.deepEqual(await readdir(parentDirectory), []);
+  } finally {
+    await rm(parentDirectory, { force: true, recursive: true });
+  }
+});
+
 test('rejects a project with an invalid manifest', async () => {
   const parentDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-workspace-'));
 
@@ -92,6 +152,31 @@ test('rejects a project with an invalid manifest', async () => {
       '{"schemaVersion":2}',
       'utf8',
     );
+
+    await assert.rejects(
+      workspace.openProject({ projectDirectory: created.projectDirectory }),
+      error =>
+        error instanceof ProjectWorkspaceError
+        && error.code === 'PROJECT_MANIFEST_INVALID',
+    );
+  } finally {
+    await rm(parentDirectory, { force: true, recursive: true });
+  }
+});
+
+test('rejects a manifest whose directory name does not end with its project ID', async () => {
+  const parentDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-workspace-'));
+
+  try {
+    const workspace = createWorkspace();
+    const created = await workspace.createProject({
+      displayName: 'Demo',
+      parentDirectory,
+    });
+    const manifestPath = join(created.projectDirectory, 'project.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.projectId = '973d5d51-4cbb-40c8-a67b-a18dd718c765';
+    await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`, 'utf8');
 
     await assert.rejects(
       workspace.openProject({ projectDirectory: created.projectDirectory }),
@@ -147,5 +232,42 @@ test('rejects symbolic links inside the required project layout', async () => {
     );
   } finally {
     await rm(parentDirectory, { force: true, recursive: true });
+  }
+});
+
+test('rejects a symbolic link in an ancestor of required layout directories', async () => {
+  const parentDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-workspace-'));
+  const externalStateDirectory = await mkdtemp(
+    join(tmpdir(), 'voxweaver-external-state-'),
+  );
+
+  try {
+    const workspace = createWorkspace();
+    const created = await workspace.createProject({
+      displayName: 'Demo',
+      parentDirectory,
+    });
+    await rm(join(created.projectDirectory, 'state'), { recursive: true });
+    await Promise.all([
+      mkdir(join(externalStateDirectory, 'backups')),
+      mkdir(join(externalStateDirectory, 'locks')),
+    ]);
+    await symlink(
+      externalStateDirectory,
+      join(created.projectDirectory, 'state'),
+      'dir',
+    );
+
+    await assert.rejects(
+      workspace.openProject({ projectDirectory: created.projectDirectory }),
+      error =>
+        error instanceof ProjectWorkspaceError
+        && error.code === 'PROJECT_LAYOUT_INCOMPLETE',
+    );
+  } finally {
+    await Promise.all([
+      rm(parentDirectory, { force: true, recursive: true }),
+      rm(externalStateDirectory, { force: true, recursive: true }),
+    ]);
   }
 });

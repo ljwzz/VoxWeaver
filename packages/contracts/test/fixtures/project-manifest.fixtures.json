@@ -1,0 +1,204 @@
+[
+  {
+    "name": "valid manifest",
+    "valid": true,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo-project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T08:00:00+08:00"
+    }
+  },
+  {
+    "name": "valid with unknown fields",
+    "valid": true,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo-project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z",
+      "futureField": {
+        "enabled": true
+      }
+    }
+  },
+  {
+    "name": "structurally valid mismatched project ID suffix",
+    "valid": true,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo-project--16f5d8dc-f566-4d1a-923b-51027cb66c91",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "unsupported schema version",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 2,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo-project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "padded display name",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": " Demo Project ",
+      "directoryName": "demo-project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "display name with NUL",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo\u0000Project",
+      "directoryName": "demo-project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "padded directory name",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": " demo-project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "directory name with forward slash",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo/project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "directory name with backslash",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo\\project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "directory name with NUL",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo\u0000project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "directory name without UUID suffix",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo-project",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "invalid project ID",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "not-a-uuid",
+      "displayName": "Demo Project",
+      "directoryName": "demo-project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "invalid UUID suffix",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo-project--9451cf18-18c8-1ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "invalid date-time",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo-project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-02-30T00:00:00.000Z",
+      "updatedAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "missing required field",
+    "valid": false,
+    "manifest": {
+      "schemaVersion": 1,
+      "layoutVersion": 1,
+      "projectId": "9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "displayName": "Demo Project",
+      "directoryName": "demo-project--9451cf18-18c8-4ddd-98b2-28ab65fb85b5",
+      "createdAt": "2026-08-08T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "non-object manifest",
+    "valid": false,
+    "manifest": []
+  }
+]

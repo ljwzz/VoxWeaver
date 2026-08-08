@@ -62,6 +62,12 @@ export const PROJECT_LAYOUT_DIRECTORIES = [
   'tmp',
 ] as const;
 
+const PROJECT_LAYOUT_ROOT_DIRECTORIES = Array.from(
+  new Set(
+    PROJECT_LAYOUT_DIRECTORIES.map(relativePath => relativePath.split('/')[0]),
+  ),
+);
+
 export class NodeProjectWorkspace {
   readonly #generateProjectId: () => string;
   readonly #now: () => Date;
@@ -106,6 +112,7 @@ export class NodeProjectWorkspace {
     const temporaryDirectory = await mkdtemp(
       join(parentDirectory, `.${directoryName}.creating-`),
     );
+    let reservationCreated = false;
     let committed = false;
 
     try {
@@ -132,12 +139,32 @@ export class NodeProjectWorkspace {
       );
 
       await validateProjectDirectory(temporaryDirectory);
-      await assertTargetDoesNotExist(projectDirectory);
-      await rename(temporaryDirectory, projectDirectory);
+      await reserveProjectDirectory(projectDirectory);
+      reservationCreated = true;
+
+      for (const rootDirectory of PROJECT_LAYOUT_ROOT_DIRECTORIES) {
+        await rename(
+          join(temporaryDirectory, rootDirectory),
+          join(projectDirectory, rootDirectory),
+        );
+      }
+
+      // The manifest is the openability marker: move it only after the complete
+      // physical layout is present in the exclusively reserved target.
+      await rename(
+        join(temporaryDirectory, 'project.json'),
+        join(projectDirectory, 'project.json'),
+      );
+      await rm(temporaryDirectory, { force: true, recursive: true });
+
+      const project = await this.openProject({ projectDirectory });
       committed = true;
 
-      return await this.openProject({ projectDirectory });
+      return project;
     } catch (error) {
+      if (!committed && reservationCreated)
+        await rm(projectDirectory, { force: true, recursive: true });
+
       if (!committed)
         await rm(temporaryDirectory, { force: true, recursive: true });
 
@@ -193,6 +220,20 @@ async function assertDirectory(path: string, relativePath: string): Promise<void
   }
 }
 
+async function assertDirectoryPath(
+  projectDirectory: string,
+  relativePath: string,
+): Promise<void> {
+  const checkedComponents: string[] = [];
+  let currentPath = projectDirectory;
+
+  for (const component of relativePath.split('/')) {
+    checkedComponents.push(component);
+    currentPath = join(currentPath, component);
+    await assertDirectory(currentPath, checkedComponents.join('/'));
+  }
+}
+
 async function assertRegularFile(path: string, relativePath: string): Promise<void> {
   try {
     const entry = await lstat(path);
@@ -225,6 +266,26 @@ async function assertTargetDoesNotExist(path: string): Promise<void> {
     'PROJECT_ALREADY_EXISTS',
     'The target project directory already exists.',
   );
+}
+
+async function reserveProjectDirectory(path: string): Promise<void> {
+  try {
+    await mkdir(path);
+  } catch (error) {
+    if (isFileSystemError(error, 'EEXIST')) {
+      throw new ProjectWorkspaceError(
+        'PROJECT_ALREADY_EXISTS',
+        'The target project directory already exists.',
+        error,
+      );
+    }
+
+    throw new ProjectWorkspaceError(
+      'PROJECT_CREATE_FAILED',
+      'Unable to reserve the target project directory.',
+      error,
+    );
+  }
 }
 
 function isFileSystemError(
@@ -300,9 +361,16 @@ async function validateProjectDirectory(
 ): Promise<ProjectManifest> {
   const manifest = await readManifest(projectDirectory);
 
+  if (!manifest.directoryName.endsWith(`--${manifest.projectId}`)) {
+    throw new ProjectWorkspaceError(
+      'PROJECT_MANIFEST_INVALID',
+      'Project directory name must end with the project ID.',
+    );
+  }
+
   await Promise.all(
     PROJECT_LAYOUT_DIRECTORIES.map(relativePath =>
-      assertDirectory(join(projectDirectory, relativePath), relativePath),
+      assertDirectoryPath(projectDirectory, relativePath),
     ),
   );
 
@@ -314,11 +382,12 @@ function validateDisplayName(displayName: string): string {
     typeof displayName !== 'string'
     || displayName.length === 0
     || displayName !== displayName.trim()
+    || displayName.includes('\0')
     || Array.from(displayName).length > 120
   ) {
     throw new ProjectWorkspaceError(
       'PROJECT_NAME_INVALID',
-      'Project display name must be a non-empty trimmed string of at most 120 characters.',
+      'Project display name must be a non-empty trimmed string without NUL characters and at most 120 characters.',
     );
   }
 

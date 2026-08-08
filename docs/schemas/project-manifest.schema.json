@@ -14,9 +14,11 @@
   ],
   "properties": {
     "schemaVersion": {
+      "type": "integer",
       "const": 1
     },
     "layoutVersion": {
+      "type": "integer",
       "const": 1
     },
     "projectId": {
@@ -26,13 +28,14 @@
     "displayName": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 120
+      "maxLength": 120,
+      "pattern": "^(?!\\s)(?![\\s\\S]*\\u0000)[\\s\\S]*\\S$"
     },
     "directoryName": {
       "type": "string",
       "minLength": 1,
       "maxLength": 160,
-      "pattern": "^(?!\\.\\.?$)(?!.*[\\\\/]).+$"
+      "pattern": "^(?!\\s)(?![\\s\\S]*[\\\\/\\u0000])[\\s\\S]+--[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
     },
     "createdAt": {
       "type": "string",
