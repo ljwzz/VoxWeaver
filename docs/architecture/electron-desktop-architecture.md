@@ -8,7 +8,7 @@
 
 适用范围：桌面端 MVP
 
-对应阶段：[阶段 00：项目基线与工程工作区](../../plan/00.项目基线与工程工作区.md)
+对应阶段：[阶段 00：项目基线与工程工作区](../spec/00.项目基线与工程工作区.md)
 
 ## 1. 文档定位
 
@@ -16,10 +16,10 @@
 
 本规格当前仍为整体设计草案。[ADR 0001](../adr/0001-model-capabilities-via-provider-apis.md) 已确认模型能力统一通过外部 Provider API 接入，但不表示已经完成以下动作：
 
-- 创建 Electron、Vue 或 Node.js 工程；
-- 确认最终依赖版本、包管理器、构建器或 SQLite 驱动；
+- 创建 Electron/Vue 桌面壳并完成 Main/Preload/Renderer/Core 跨进程基础传输；Node.js monorepo 与 M0 后端基线已存在；
+- 确认 Electron、Vue 等尚未冻结依赖的精确版本与构建器；包管理器与开发 Node.js 基线已有根配置，SQLite 语义已有 ADR 0002，但生产 Electron 内置 Node 与该 ADR 的兼容性仍由 ARCH-D02 验证；
 - 确认首批 LLM、TTS 和 ASR Provider API 及其数据策略；
-- 确认非模型音频处理方案；
+- 补齐 M5 外部非模型音频检测 API 的精确 profile/ADR，以及 M6 随应用分发的受控本地处理器实现、许可和 runtime profile；
 - 完成目标平台打包和纵向验证。
 
 其余核心选型必须在进入对应实现前通过 ADR 或可复现验证固定，并同步关联阶段计划。
@@ -36,7 +36,7 @@
 - Provider 请求取消、失败或应用重启后可判定恢复范围，不要求重跑整章；
 - 第一版不启动 VoxWeaver 自身的 localhost HTTP 服务，不开放入站网络 API；
 - 不开发独立网页端；Vue Renderer 只在 Electron 桌面应用内交付；
-- 保留未来增加 CLI 或自动化 HTTP 适配器的应用边界，但不由此派生网页端。
+- 应用用例保持传输无关；该解耦不批准 CLI/HTTP adapter，未来启用前仍须逐项批准并更新主计划，也不由此派生网页端。
 
 ## 3. 非目标
 
@@ -49,23 +49,24 @@
 - 不在 MVP 提供多人协作、远程项目或常驻系统服务；
 - 不提供浏览器访问的产品界面、独立 Web 构建或网页部署流程；
 - 不在本规格固定具体 TTS、ASR、LLM Provider 或模型；
-- 不由本规格确定 FFmpeg 等非模型音频处理是本地执行还是调用外部 API；
+- 不由本规格重新选择非模型音频处理的执行边界：M5 检测使用外部 API，M6 章节处理使用随应用分发的受控本地处理器；具体 Provider/处理器仍分别由 M5-D02、M6-D01 关闭；
 - 不把未确认的 `docs/ideas/` 内容纳入实现范围。
 
 ## 4. 技术结论
 
-Electron 应用不要求所有后端能力都使用 JavaScript 或 TypeScript。推荐语言边界如下：
+Electron 应用不要求所有后端能力都使用 JavaScript 或 TypeScript。当前语言与运行时边界如下；精确版本仍服从对应 Gate：
 
 | 区域 | 推荐语言/运行时 | 结论 | 原因 |
 |---|---|---|---|
 | Renderer | Vue 3 + TypeScript | 确定方向 | 用户界面、状态展示和交互 |
 | Preload | TypeScript，构建为 JavaScript | 确定方向 | 受限 `contextBridge` API |
 | Electron Main | TypeScript，构建为 JavaScript | 确定方向 | 窗口、对话框、协议和进程管理 |
-| Application Core | TypeScript + Electron `utilityProcess` | 推荐方向 | 直接使用 Node.js/Electron 进程与消息能力，集中业务和状态写入 |
+| Application Core | TypeScript + Electron `utilityProcess` | 桌面运行边界已确认，跨进程实现未验证 | 直接使用 Node.js/Electron 进程与消息能力，集中业务和状态写入 |
 | 纯规则/文本处理 | TypeScript 或 Application Core 内模块 | 按性能验证 | 优先减少不必要的跨进程边界 |
 | 模型 Provider Client | TypeScript，运行在 Application Core | 确定方向 | 统一连接 LLM、TTS、ASR 等外部 API，不运行模型 |
-| 非模型音频处理 | 本地 FFmpeg 或外部音频 API | 待后续 ADR | 分发、许可、离线性和可恢复性尚需比较 |
-| SQLite | 由 Application Core 的 Node.js 进程独占写入 | 推荐方向 | 维持单逻辑写入者和统一事务边界 |
+| 非模型音频检测（M5） | 外部音频处理 API | 执行边界已确认 | Provider、profile、许可、数据策略和 live 证据仍由 M5-D02 收口 |
+| 章节音频处理（M6） | 随应用分发的受控本地处理器 | 执行边界已确认 | 具体处理器、版本、许可、哈希和 runtime profile 仍由 M6-D01 收口 |
+| SQLite | 由 Application Core 的 Node.js 进程通过 `node:sqlite` 独占写入 | 已由 ADR 0002 确认 | 维持单逻辑写入者和统一事务边界 |
 | 跨进程/外部 API 契约 | TypeScript 类型 + JSON Schema Draft 2020-12 | 已有计划约束 | 同时校验应用消息、Provider 输入输出和持久化数据 |
 
 原则：TypeScript 是桌面壳、应用核心和全部 Provider adapter 的实现语言。所有模型能力始终是外部 API 依赖，VoxWeaver 不存在 Python 语音 Worker 或本地模型运行时。
@@ -81,7 +82,8 @@ flowchart LR
     ModelAdapters["Model Provider Adapters<br/>LLM / TTS / ASR / VAD / Speaker"]
     LocalProviders["用户管理的 API<br/>Loopback / LAN"]
     CloudProviders["云端 Provider API<br/>HTTPS"]
-    AudioProcessor["非模型音频处理<br/>本地或外部，待 ADR"]
+    ExternalAudioQA["M5 非模型音频检测<br/>外部 API，具体 Provider 待 Gate"]
+    LocalAudioProcessor["M6 章节音频处理<br/>随应用分发的受控本地处理器"]
     State["项目 SQLite"]
     Files["项目文件与正式产物"]
 
@@ -93,7 +95,8 @@ flowchart LR
     Core --> ModelAdapters
     ModelAdapters --> LocalProviders
     ModelAdapters --> CloudProviders
-    Core --> AudioProcessor
+    Core --> ExternalAudioQA
+    Core --> LocalAudioProcessor
 ```
 
 强制依赖方向：
@@ -120,7 +123,7 @@ voxweaver/
 │   │   └── renderer/              # 仅供 Electron 加载的 Vue 桌面界面
 ├── services/
 │   ├── app-core/                  # Electron utilityProcess 入口
-│   └── api/                       # MVP 不实现；保留未来 HTTP/CLI 适配器位置
+│   └── api/                       # MVP 不实现；未来启用 HTTP/CLI 前须先批准并更新主计划
 ├── packages/
 │   ├── contracts/                 # IPC、Provider、manifest、事件 schema
 │   ├── application/               # 应用用例和查询
@@ -138,8 +141,13 @@ voxweaver/
 ├── configs/
 │   ├── providers/                 # 无密钥 Provider 模板
 │   └── policies/                  # 远程数据、重试、限流和导出策略
-├── docs/
-├── plan/
+├── docs/                         # ADR、ideas 与全部规格
+│   ├── adr/                       # 已接受技术决策
+│   ├── ideas/                     # 未批准想法
+│   ├── architecture/              # 架构规格
+│   ├── schemas/                   # JSON Schema 契约
+│   ├── spec/                      # 阶段规格
+│   └── milestones/                # 里程碑执行规格
 └── tests/
 ```
 
@@ -234,7 +242,7 @@ Application Core 是本地业务后端，但不是 HTTP 服务器。它运行在
 - Provider 并发、限流、异步任务查询、未知提交结果和重启恢复；
 - 临时产物校验和正式提交；
 - 生成 renderer 可消费的领域事件；
-- 适配未来 HTTP、CLI 或远程传输端口。
+- 对外只提供传输无关的 application ports；当前不实现 HTTP、CLI 或远程入站 adapter。
 
 Core 崩溃时 Main 保持运行，显示恢复页，并在确认项目写锁和数据库状态后重新启动 Core。
 
@@ -688,7 +696,7 @@ SQLite 约束：
 - 正式文件提交、依赖更新、活动版本切换和 stale cause 登记必须位于明确事务边界；
 - 先完成临时文件写入和校验，再执行数据库提交和正式文件切换；
 - 失败必须能区分数据库未提交、正式文件缺失和孤立临时文件；
-- 数据库驱动、journal mode、busy timeout 和备份方式由单独 ADR/验证任务确认。
+- 数据库驱动、journal mode、busy timeout、备份和迁移方式由已接受的 [ADR 0002](../adr/0002-project-state-with-node-sqlite.md) 固定，并由阶段 00 实现证据验证。
 
 ## 11. Provider 请求与结果协议
 
@@ -803,11 +811,12 @@ VoxWeaver 开发命令不得自动启动、下载或配置任何模型或 Provid
 
 - Electron main、preload、renderer 和 Core 构建产物；
 - 应用图标、协议和默认配置；
-- 经后续 ADR 选定的非模型音频处理组件或外部 API 配置；
+- M5-D02 批准的外部非模型音频检测 adapter 与无密钥 profile 模板；
+- M6-D01 批准并随应用分发的本地处理器 packaged resource、哈希和许可证清单；
 - LLM、TTS、ASR 等 Provider adapter、无密钥 profile 模板和 schema；
 - schema、迁移和许可证清单。
 
-JavaScript 构建产物可以进入 ASAR。生产包不得包含 Python 运行时、模型 SDK、模型权重或模型推理运行时。若后续 ADR 选择本地 FFmpeg，其可执行文件和许可清单作为独立 packaged resources 处理。
+JavaScript 构建产物可以进入 ASAR。生产包不得包含 Python 运行时、模型 SDK、模型权重或模型推理运行时。M6-D01 选中的本地处理器可执行文件、哈希和许可清单必须作为独立 packaged resources 处理，不得调用系统同名程序。
 
 ### 14.3 Provider 集成待验证项
 
@@ -830,11 +839,11 @@ JavaScript 构建产物可以进入 ASAR。生产包不得包含 Python 运行�
 - TypeScript 编译目标与 Electron 内置 Node/Chromium 能力对齐；
 - Provider profile、能力契约、adapter、非模型音频处理器和 schema 分别版本化；
 - 破坏性协议变化升级主版本并提供兼容或迁移策略；
-- 最终版本和包管理器由工程初始化 ADR 固定。
+- Electron、Chromium、TypeScript 和构建器的精确版本由工程初始化/工具链 ADR 固定；pnpm 与开发/测试 Node.js 基线由根 `package.json` 和 `.nvmrc` 约束。
 
 ## 15. 未来适配
 
-领域和应用用例不得依赖 Electron IPC。未来可以增加：
+领域和应用用例不得依赖 Electron IPC。下列 adapter 不属于当前正式范围；只有逐项批准并先更新主计划后才可增加：
 
 ```text
 Electron IPC adapter ─┐
@@ -899,7 +908,7 @@ HTTP adapter         ─┘
 - 签名/公证后的应用可以启动；
 - packaged resources 路径正确；
 - 安装包不包含 Python 运行时、模型 SDK 或模型权重；
-- 若选用本地 FFmpeg，其 packaged resource 在安装目录可执行；
+- M6-D01 选中的本地处理器 packaged resource 在目标平台安装目录可执行，且版本/哈希与批准 profile 一致；
 - 路径包含空格和非 ASCII 字符；
 - 升级不覆盖用户项目；
 - 应用更新后旧项目迁移和回滚行为明确。
@@ -926,36 +935,71 @@ HTTP adapter         ─┘
 
 ## 18. 实施顺序
 
-1. 应用 [ADR 0001](../adr/0001-model-capabilities-via-provider-apis.md)，确认全部模型能力使用外部 Provider API；按仅 Electron 桌面端、Vue Renderer 内嵌交付且 MVP 无入站 HTTP 服务的边界实施；
-2. 建立 monorepo 工程、版本策略和包管理器；
-3. 建立 contracts、JSON Schema 和 IPC 测试夹具；
-4. 实现 Main、Preload 和最小 Renderer；
-5. 实现 Core 启动、健康检查和 MessagePort；
-6. 实现项目目录、SQLite、锁和恢复；
-7. 实现 Provider core、Mock HTTP Provider、凭据引用和数据策略；
-8. 实现 LLM、TTS 和 ASR 能力端口及契约夹具；
-9. 实现 Provider 同步、流式、异步任务、取消和重启恢复纵向切片；
-10. 接入首批已批准的 LLM、TTS 和 ASR Provider adapter；
-11. 通过独立 ADR 确认并接入非模型音频处理；
-12. 完成打包、签名和目标平台验证；
-13. 根据证据将规格更新为 `accepted` 或调整方案。
+本节只描述架构纵向顺序，不替代阶段 Gate、里程碑 DAG 或任务卡；已完成项只允许复核和保留，不得重复派发：
 
-## 19. 待决策事项
+1. `[已验证后端基线]` 保留 [ADR 0001](../adr/0001-model-capabilities-via-provider-apis.md) 的外部 Provider API 边界，以及仅 Electron 桌面端、Vue Renderer 内嵌交付、MVP 无入站 HTTP 服务的范围；
+2. `[已验证后端基线]` 保留现有 monorepo、pnpm、contracts/schema、项目目录、SQLite、锁、Task workflow、迁移和恢复实现；开发/生产 Node 与 Electron 的最终一致性仍由 ARCH-D02 关闭；
+3. `[待实施]` 建立 Main、Preload、最小 Renderer、Core 启动/健康检查、MessagePort 和 IPC 契约夹具，完成阶段 00 桌面纵向传输；
+4. `[待实施]` 实现 Provider core、Mock HTTP Provider、凭据引用和数据策略；
+5. `[待实施]` 实现 LLM、TTS 和 ASR 能力端口、契约夹具，以及同步/流式/异步任务、取消和重启恢复纵向切片；
+6. `[待 Gate]` 接入首批已批准的 LLM、TTS 和 ASR Provider adapter；
+7. `[待 Gate]` 分别按 accepted ADR 接入 M5 外部非模型音频检测 API 与 M6 随应用分发的受控本地处理器；
+8. `[待 Gate]` 完成打包、签名和目标平台验证；
+9. 根据全部实现与验证证据将本规格更新为 `accepted`，或显式调整方案。
 
-- 首个正式支持的操作系统和 CPU 架构；
-- 包管理器、构建器和 Electron 打包工具；
-- SQLite Node.js 驱动及 native module 重建策略；
-- journal mode、busy timeout、备份和迁移方案；
-- 非模型音频处理采用本地 FFmpeg 还是外部 API；
-- 若选择本地 FFmpeg，其分发、许可和升级方式；
-- 首批 LLM、TTS 和 ASR Provider adapter 及各自的 native/compatible API dialect；
-- LLM 结构化输出的最低能力和允许降级策略；
-- remote Provider 的项目级授权、数据最小化和成本提示方式；
-- TTS/ASR 上传、下载、流式与异步任务的 MVP 协议边界；
-- Provider 并发、限流、幂等、取消和未知提交结果策略；
-- 自定义资源协议的媒体范围请求实现；
-- 应用更新渠道、签名证书和回滚策略；
-- 是否在 MVP 后增加 CLI 或 HTTP adapter。
+## 19. 跨里程碑 Decision Gates
+
+候选策略已由 `decision-baseline-2026-08-08` 确认；执行输入未齐的 Gate 保持 `open`。本节受 [无人值守执行协议](../无人值守执行协议.md) 约束，不替代 M1～M8 各自的 Gate。
+
+### ARCH-D01：首个正式支持平台
+
+状态：`open`，引用 [TODO-ARCH-01](../../todoe-check.md#todo-arch-01)。
+
+已确认策略（2026-08-08）：只选一组能完成打包、签名和交互回归的 OS/CPU；不同时声明多平台正式支持，也不用开发构建充当正式发布证据。
+
+直接阻塞：M6-D01 关闭，以及由其放行的 M6-X01A、M6-10、M6-19 目标平台验证；本规格第 16.5、17 节的目标平台安装包与完整纵向验收；本架构规格从 `draft` 升级为 `accepted`。
+
+未关闭时仍可执行：不对 M1～M5、M7、M8 新增任务级限制；M6 只能使用 M6-D01 的 open-state 白名单，不得派发 M6-X01A、M6-10、M6-19 中的真实处理器或目标平台验证。
+
+关闭证据：根待办父级“已确认”勾选，并固定目标 OS、最低版本、CPU、安装包格式、验证设备/runtime profile ID、负责人、可直接复制的打包/安装/启动/升级/回退命令、成功与失败判定以及证据路径。精确值未齐时保持 `open`。
+
+### ARCH-D02：Electron 打包、签名与更新工具链
+
+状态：`open`，引用 [TODO-ARCH-02](../../todoe-check.md#todo-arch-02)。
+
+已确认策略（2026-08-08）：首版只冻结一套打包工具；应用签名和自动更新分别在发布主体、证书和渠道齐备后启用。未启用的能力必须显式记为非发布证据，不得虚拟证书或更新渠道。
+
+直接阻塞：M6-D01 关闭，以及由其放行的 M6-X01A、M6-10、M6-19 随应用分发验证；本规格第 16.5、17 节的打包、签名、更新与回退验收；本架构规格从 `draft` 升级为 `accepted`。
+
+未关闭时仍可执行：不对 M1～M5、M7、M8 新增任务级限制；M6 只能使用 M6-D01 的 open-state 白名单。阶段 00 可继续桌面与 Core 的非发布开发验证，但不得宣称安装包、签名、更新或回退已验收。
+
+关闭证据：根待办父级“已确认”勾选，接受状态的工具链 ADR，以及打包工具/精确版本、Electron/Chromium/内置 Node 精确版本、发布主体、证书来源与密钥不落盘边界、签名启用状态、更新渠道、回退策略、无密钥可复制命令、成功与失败判定、执行环境、负责人和证据路径。还必须由负责人明确 ADR 0002 的 Node.js `24.19.x` 是唯一支持范围还是验证基线：若是唯一支持范围，先把根 `engines` 收窄到该范围；若只是验证基线，先接受修订或取代 ADR。随后在打包后的 Core 中记录 `process.versions.node`，并用可直接复制的命令验证 `node:sqlite` 的 `DatabaseSync`、`backup()` 及本项目已使用的连接选项；根 `engines`、`.nvmrc`、Electron 内置 Node 与生效 ADR 必须一致。执行模型不得自行选择解释或放宽；任一项未齐时保持 `open`。
+
+### ARCH-D03：历史产物配额与可恢复清理
+
+状态：`open`，引用 [TODO-ARCH-03](../../todoe-check.md#todo-arch-03)。
+
+已确认策略（2026-08-08）：按项目使用软配额和全局磁盘保护线；自动清理只能针对无引用缓存和临时文件，正式 revision 必须经显式归档或删除确认。
+
+直接阻塞：历史配额/预览/清理/恢复能力的后续实现与验收，以及本架构规格从 `draft` 升级为 `accepted`。当前 M1～M8 没有该能力的任务卡，因此无可派发的清理实现任务。
+
+未关闭时仍可执行：M1～M8 只按各自 Gate 与 DAG 派发；可继续保留正式历史 revision、不引入自动删除的已定义路径。不得实现配额执行器、自动清理或正式 revision 删除。
+
+关闭证据：根待办父级“已确认”勾选，并固定项目软配额、全局保护线、可清理类别、保留期、恢复窗口、版本化 policy ID、临界值/并发/中断规则、预览和人工确认边界、恢复失败行为、测试夹具/hash、精确验证命令与证据路径。关闭 Gate 也不授权实现；必须先新增原子任务卡。
+
+其余候选策略已确认但执行输入未齐的能力 Gate 由对应里程碑规格管理：
+
+- [LLM Provider、dialect 与数据策略](../../todoe-check.md#todo-m2-05)；
+- [TTS Provider 与请求/恢复策略](../../todoe-check.md#todo-m4-07)；
+- [ASR/VAD/说话人分析 Provider](../../todoe-check.md#todo-m5-01)；
+- [非模型音频检测边界](../../todoe-check.md#todo-m5-02) 与 [章节音频处理方式](../../todoe-check.md#todo-m6-01)。
+
+以下事项已有当前权威结论，不再作为开放项重复派发：
+
+- pnpm 版本由根 `package.json` 固定；`.nvmrc` 固定开发/测试验证版本，但根 `engines` 的支持范围与 ADR 0002 的 `24.19.x` 文义尚须由 ARCH-D02 对齐，生产 Electron 内置 Node 的精确版本及兼容性也由该 Gate 关闭；
+- SQLite、journal、busy timeout、备份和迁移语义由 [ADR 0002](../adr/0002-project-state-with-node-sqlite.md) 约束；其在生产 Electron 内置 Node 中的可用性仍须由 ARCH-D02 验证；
+- 自定义媒体协议的范围请求属于 M6/M7 必须验证的实现要求，不是自由选择项；
+- CLI/HTTP adapter 不属于当前 MVP，不阻塞 M1～M8。
 
 ## 20. 权威依据
 

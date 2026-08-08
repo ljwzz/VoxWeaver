@@ -16,7 +16,7 @@
 
 每个 schema 必须声明 `$schema`、`$id` 和业务版本，并有合法、非法和兼容性测试夹具。
 
-采用的规范版本见 [plan/README.md](../../plan/README.md)。
+采用的规范版本见 [阶段规格索引](../spec/README.md)。
 
 ## 已定义契约
 

@@ -25,7 +25,6 @@ export default antfu({
     '**/*.md',
     'data/**',
     'docs/**',
-    'plan/**',
     'pnpm-lock.yaml',
     'pnpm-workspace.yaml',
     'tsconfig*.json',
