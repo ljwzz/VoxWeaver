@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxweaver.local/schemas/artifact-record.schema.json",
+  "title": "VoxWeaver artifact revision record",
+  "type": "object",
+  "required": [
+    "artifactId",
+    "artifactType",
+    "lineageId",
+    "revisionId",
+    "scope",
+    "storageKind",
+    "contentPath",
+    "contentHash",
+    "inputFingerprint",
+    "processorId",
+    "processorVersion",
+    "parametersHash",
+    "executionStatus",
+    "validityStatus",
+    "reviewStatus",
+    "createdAt",
+    "createdBy"
+  ],
+  "properties": {
+    "artifactId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "artifactType": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lineageId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "revisionId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "kind",
+        "identifiers"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identifiers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "storageKind": {
+      "type": "string",
+      "enum": [
+        "imported",
+        "canonical",
+        "normalized",
+        "corrected",
+        "structure",
+        "knowledge",
+        "scripts",
+        "spoken",
+        "voice-profiles",
+        "renders",
+        "qa",
+        "assemblies"
+      ]
+    },
+    "contentPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contentHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "inputFingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "processorId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "processorVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parametersHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "executionStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "succeeded",
+        "failed",
+        "canceled"
+      ]
+    },
+    "validityStatus": {
+      "type": "string",
+      "enum": [
+        "current",
+        "stale",
+        "superseded",
+        "missing"
+      ]
+    },
+    "reviewStatus": {
+      "type": "string",
+      "enum": [
+        "not_required",
+        "pending",
+        "approved",
+        "rejected"
+      ]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "createdBy": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": true
+}

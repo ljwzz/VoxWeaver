@@ -7,23 +7,30 @@ const Ajv2020 = Ajv2020Module.default;
 const addFormats = addFormatsModule.default;
 
 export const PROJECT_MANIFEST_SCHEMA_VERSION = 1 as const;
-export const PROJECT_LAYOUT_VERSION = 1 as const;
+export const PROJECT_LAYOUT_VERSION = 2 as const;
+export const PROJECT_MIN_LAYOUT_VERSION = 1 as const;
 
 export interface ProjectManifestFields {
-  schemaVersion: typeof PROJECT_MANIFEST_SCHEMA_VERSION;
-  layoutVersion: typeof PROJECT_LAYOUT_VERSION;
-  projectId: string;
-  displayName: string;
-  directoryName: string;
-  createdAt: string;
-  updatedAt: string;
+  readonly schemaVersion: typeof PROJECT_MANIFEST_SCHEMA_VERSION;
+  readonly layoutVersion:
+    | typeof PROJECT_LAYOUT_VERSION
+    | typeof PROJECT_MIN_LAYOUT_VERSION;
+  readonly projectId: string;
+  readonly displayName: string;
+  readonly directoryName: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export type ProjectManifest = ProjectManifestFields & Record<string, unknown>;
 
+export type ProjectAccessMode = 'read-write' | 'read-only';
+
 export interface ProjectContext {
-  projectDirectory: string;
-  manifest: ProjectManifest;
+  readonly projectDirectory: string;
+  readonly projectSessionId: string;
+  readonly accessMode: ProjectAccessMode;
+  readonly manifest: ProjectManifest;
 }
 
 export const PROJECT_MANIFEST_SCHEMA = {
@@ -47,7 +54,7 @@ export const PROJECT_MANIFEST_SCHEMA = {
     },
     layoutVersion: {
       type: 'integer',
-      const: PROJECT_LAYOUT_VERSION,
+      enum: [PROJECT_MIN_LAYOUT_VERSION, PROJECT_LAYOUT_VERSION],
     },
     projectId: {
       type: 'string',

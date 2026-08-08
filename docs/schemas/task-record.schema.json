@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxweaver.local/schemas/task-record.schema.json",
+  "title": "VoxWeaver task record",
+  "type": "object",
+  "required": [
+    "taskId",
+    "projectId",
+    "processorId",
+    "inputFingerprint",
+    "outputScope",
+    "dedupeKey",
+    "executionStatus",
+    "recoveryStatus",
+    "attempt",
+    "temporaryPath",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "taskId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "processorId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputFingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "outputScope": {
+      "type": "object",
+      "required": [
+        "kind",
+        "identifiers"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identifiers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "dedupeKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "executionStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "succeeded",
+        "failed",
+        "canceled"
+      ]
+    },
+    "recoveryStatus": {
+      "type": "string",
+      "enum": [
+        "none",
+        "resumable",
+        "retryable",
+        "manual",
+        "orphaned"
+      ]
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "temporaryPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resultRevisionId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "errorCode": {
+      "type": "string",
+      "minLength": 1
+    },
+    "errorMessage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": true
+}

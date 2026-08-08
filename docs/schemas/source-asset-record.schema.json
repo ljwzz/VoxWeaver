@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxweaver.local/schemas/source-asset-record.schema.json",
+  "title": "VoxWeaver source asset record",
+  "type": "object",
+  "required": [
+    "sourceAssetId",
+    "sourceType",
+    "originalName",
+    "contentHash",
+    "relativePath",
+    "createdAt",
+    "createdBy"
+  ],
+  "properties": {
+    "sourceAssetId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "sourceType": {
+      "type": "string",
+      "minLength": 1
+    },
+    "originalName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contentHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "createdBy": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": true
+}

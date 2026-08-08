@@ -21,3 +21,14 @@
 ## 已定义契约
 
 - `project-manifest.schema.json`：阶段 00 项目根目录 `project.json` 的首版契约。
+- `project-record.schema.json`：项目状态库元数据记录。
+- `project-write-lock.schema.json`：阶段 00 项目写锁文件的首版契约。
+- `source-asset-record.schema.json`：源资产登记记录。
+- `artifact-record.schema.json`：正式产物 revision 的状态与溯源记录。
+- `artifact-revision.schema.json`：revision 目录内的不可变清单。
+- `artifact-dependency.schema.json`：正式产物之间的直接依赖边。
+- `stage-run-record.schema.json`：阶段执行记录。
+- `task-record.schema.json`：可恢复、可幂等投递的任务记录。
+- `review-decision-record.schema.json`：不可变人工审核决定。
+- `stale-cause.schema.json`：可独立解决的产物过期原因。
+- `export-snapshot-record.schema.json`：固定 revision 集合和过期豁免的导出快照。

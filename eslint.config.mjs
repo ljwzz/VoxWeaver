@@ -10,6 +10,7 @@ const filenameCaseOptions = {
     'app-core',
     'package.json',
     'project-workspace',
+    'workflow-core',
     '[a-z]+.[jt]s',
     '[a-z]+.d.ts',
   ],

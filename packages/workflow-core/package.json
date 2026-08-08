@@ -1,5 +1,5 @@
 {
-  "name": "@voxweaver/application",
+  "name": "@voxweaver/workflow-core",
   "type": "module",
   "version": "0.0.0",
   "private": true,
@@ -14,13 +14,12 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "clean": "rimraf dist ../../node_modules/.cache/voxweaver/application.tsbuildinfo",
+    "clean": "rimraf dist ../../node_modules/.cache/voxweaver/workflow-core.tsbuildinfo",
     "test": "tsc -p tsconfig.json && node --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:source": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@voxweaver/contracts": "workspace:*",
-    "@voxweaver/workflow-core": "workspace:*"
+    "@voxweaver/contracts": "workspace:*"
   }
 }

@@ -1,19 +1,45 @@
-import type { CreateProjectCommand, OpenProjectCommand, ProjectWorkspacePort } from '@voxweaver/application';
+import type {
+  AssertProjectSessionCommand,
+  CreateProjectCommand,
+  OpenProjectCommand,
+  ProjectWorkflowApplicationService,
+  ProjectWorkflowFactory,
+  ProjectWorkspacePort,
+} from '@voxweaver/application';
 import type { ProjectContext } from '@voxweaver/contracts';
-import { ProjectApplicationService } from '@voxweaver/application';
-import { NodeProjectWorkspace } from '@voxweaver/project-workspace';
+import {
+  ProjectApplicationService,
+  ProjectWorkflowApplicationService as WorkflowApplicationService,
+} from '@voxweaver/application';
+import {
+  NodeProjectWorkflow,
+  NodeProjectWorkspace,
+} from '@voxweaver/project-workspace';
 
 export interface AppCoreServiceOptions {
   projectWorkspace?: ProjectWorkspacePort;
+  projectWorkflowFactory?: ProjectWorkflowFactory;
 }
 
 export class AppCoreService {
   readonly #projects: ProjectApplicationService;
+  readonly workflow: ProjectWorkflowApplicationService;
 
   constructor(options: AppCoreServiceOptions = {}) {
     this.#projects = new ProjectApplicationService(
       options.projectWorkspace ?? new NodeProjectWorkspace(),
     );
+    this.workflow = new WorkflowApplicationService(
+      this.#projects,
+      options.projectWorkflowFactory
+      ?? (context => new NodeProjectWorkflow(context)),
+    );
+  }
+
+  assertActiveProjectSession(
+    command: AssertProjectSessionCommand,
+  ): ProjectContext {
+    return this.#projects.assertActiveProjectSession(command);
   }
 
   closeProject(): Promise<void> {
@@ -30,5 +56,9 @@ export class AppCoreService {
 
   openProject(command: OpenProjectCommand): Promise<ProjectContext> {
     return this.#projects.openProject(command);
+  }
+
+  switchProject(command: OpenProjectCommand): Promise<ProjectContext> {
+    return this.#projects.switchProject(command);
   }
 }

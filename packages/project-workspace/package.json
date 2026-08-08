@@ -20,6 +20,7 @@
     "typecheck:source": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@voxweaver/contracts": "workspace:*"
+    "@voxweaver/contracts": "workspace:*",
+    "@voxweaver/workflow-core": "workspace:*"
   }
 }

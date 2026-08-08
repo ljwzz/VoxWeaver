@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxweaver.local/schemas/project-write-lock.schema.json",
+  "title": "VoxWeaver project write lock",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "projectSessionId",
+    "processId",
+    "hostname",
+    "acquiredAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "projectSessionId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "processId": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "hostname": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "acquiredAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": true
+}

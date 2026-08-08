@@ -35,6 +35,9 @@ importers:
       '@voxweaver/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@voxweaver/workflow-core':
+        specifier: workspace:*
+        version: link:../workflow-core
 
   packages/common: {}
 
@@ -48,6 +51,15 @@ importers:
         version: 3.0.1(ajv@8.17.1)
 
   packages/project-workspace:
+    dependencies:
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@voxweaver/workflow-core':
+        specifier: workspace:*
+        version: link:../workflow-core
+
+  packages/workflow-core:
     dependencies:
       '@voxweaver/contracts':
         specifier: workspace:*
