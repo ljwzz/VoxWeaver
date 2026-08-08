@@ -15,5 +15,6 @@
 
 - [角色音色与小说剧本化](./character-voice-and-story-adaptation.md)
 - [TTS 后立即 ASR 的剧本行内质量反馈](./tts-asr-inline-quality-feedback.md)
+- [语音模型与 Provider API 候选备忘](./speech-model-and-provider-candidates.md)
 
 记录想法不代表确认实施。

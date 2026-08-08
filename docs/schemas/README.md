@@ -9,7 +9,8 @@
 - ImportedNovel、ChapterIndex 和 ProcessingSegment；
 - CorrectionProposal；
 - ScriptUnit、Character、VoiceProfile 和 PronunciationEntry；
-- TTS/ASR 请求响应；
+- Provider profile、通用错误和异步任务引用；
+- LLM/TTS/ASR 规范化请求响应；
 - QAResult、ChapterAssembly 和 ChapterTimeline；
 - 工程包 manifest 和发布清单。
 

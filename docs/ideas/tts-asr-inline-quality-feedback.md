@@ -90,8 +90,7 @@ NIST 的 ASR 评估将删除、插入和替换作为识别错误的基本分类�
 - 新 QA 结果不能覆盖旧结果，页面只将当前活动版本聚合到剧本行；
 - 批量生成时允许多行并发，但每行状态和警告互不覆盖；
 - 不一致默认进入人工复核，不在 MVP 中自动无限重生成；
-- ASR 实现通过适配器接入。FunASR 官方项目当前提供 ASR、时间戳、VAD 和标点等候选能力，可用于后续基准比较：
-  <https://github.com/modelscope/FunASR>
+- ASR 只通过外部 Provider API 适配器接入；VoxWeaver 不运行、下载或分发 ASR/VAD 模型。
 
 ## 数据与状态要求
 
@@ -103,8 +102,11 @@ interface InlineTranscriptCheck {
   scriptUnitId: string;
   audioArtifactId: string;
   spokenRevisionId: string;
+  providerProfileId: string;
   asrAdapterId: string;
+  apiDialect: string;
   asrModelVersion: string;
+  providerRequestId?: string;
   rawTranscript: string;
   normalizedTarget: string;
   normalizedTranscript: string;
@@ -123,7 +125,7 @@ interface InlineTranscriptCheck {
 
 - 依赖稳定的 `script_unit_id`、`spoken_revision_id` 和 AudioClip revision；
 - 依赖幂等 Job、任务关联和单行状态更新机制；
-- 依赖可替换 ASR 适配器及其模型版本记录；
+- 依赖可替换 ASR Provider adapter，以及 Provider、API dialect、模型/服务标识和请求 ID 记录；
 - 依赖版本化文本规范化和 diff 实现；
 - 页面同一步骤不等于合并后台领域职责，阶段 07 仍负责产生音频，阶段 08 仍负责消费音频并形成 QA 结论；
 - ASR 结果只是一项机器证据，转录不一致警告不能自动替代听感和发音人工判断；

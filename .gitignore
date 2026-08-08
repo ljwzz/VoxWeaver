@@ -31,10 +31,6 @@ coverage/
 *.sqlite3
 *.db
 
-# Models and downloaded weights
-models/*
-!models/.gitkeep
-
 # Private or generated project data
 data/books/original/*
 !data/books/original/.gitkeep
@@ -60,4 +56,3 @@ data/chapters/*
 !data/chapters/.gitkeep
 data/exports/*
 !data/exports/.gitkeep
-

@@ -11,3 +11,7 @@
 - 回退条件。
 
 建议命名：`NNNN-short-title.md`。阶段文件不得用“待决策”内容代替 ADR。
+
+当前已接受决策：
+
+- [ADR 0001：模型能力统一通过 Provider API 接入](./0001-model-capabilities-via-provider-apis.md)

@@ -26,7 +26,7 @@ https://www.rfc-editor.org/info/rfc2119/
 
 ## 2. 当前实现审计状态
 
-当前工作区未发现可执行源码，`apps/`、`services/`、`workers/` 和 `packages/` 仅有目录占位文件。因此：
+当前工作区未发现可执行源码，`apps/`、`services/` 和 `packages/` 仅有目录占位文件。因此：
 
 - 所有阶段的实现状态统一记为 `unverified`；
 - 文档完成不代表功能已经实现；
