@@ -1,65 +1,65 @@
 {
   "schemaVersion": "m1-resource-budget-profile-v1",
-  "profileId": "m1-d05-owner-approval-required",
-  "budgetProfileVersion": "unapproved-placeholder-v1",
+  "profileId": "m1-b05-exploration-safety-envelope",
+  "budgetProfileVersion": "m1-b05-exploration-unapproved-v1",
   "approval": {
     "status": "unapproved"
   },
   "runsPerCase": 5,
   "budgets": {
     "maxSourceBytes": {
-      "default": null,
-      "minimum": null,
-      "maximum": null,
-      "globalCeiling": null
+      "default": 52428800,
+      "minimum": 1,
+      "maximum": 52428800,
+      "globalCeiling": 52428800
     },
     "readChunkBytes": {
-      "default": null,
-      "minimum": null,
-      "maximum": null,
-      "globalCeiling": null
+      "default": 262144,
+      "minimum": 4096,
+      "maximum": 1048576,
+      "globalCeiling": 4194304
     },
     "maxRssBytes": {
-      "default": null,
-      "minimum": null,
-      "maximum": null,
-      "globalCeiling": null
+      "default": 536870912,
+      "minimum": 33554432,
+      "maximum": 805306368,
+      "globalCeiling": 1073741824
     },
     "maxTemporaryBytes": {
-      "default": null,
-      "minimum": null,
-      "maximum": null,
-      "globalCeiling": null
+      "default": 134217728,
+      "minimum": 1048576,
+      "maximum": 268435456,
+      "globalCeiling": 536870912
     },
     "maxBlockCount": {
-      "default": null,
-      "minimum": null,
-      "maximum": null,
-      "globalCeiling": null
+      "default": 20000000,
+      "minimum": 1,
+      "maximum": 20000000,
+      "globalCeiling": 50000000
     },
     "maxBlockUtf8Bytes": {
-      "default": null,
-      "minimum": null,
-      "maximum": null,
-      "globalCeiling": null
+      "default": 167772160,
+      "minimum": 1,
+      "maximum": 209715200,
+      "globalCeiling": 268435456
     },
     "taskTimeoutMs": {
-      "default": null,
-      "minimum": null,
-      "maximum": null,
-      "globalCeiling": null
+      "default": 120000,
+      "minimum": 100,
+      "maximum": 300000,
+      "globalCeiling": 600000
     },
     "cancelCheckBytes": {
-      "default": null,
-      "minimum": null,
-      "maximum": null,
-      "globalCeiling": null
+      "default": 262144,
+      "minimum": 4096,
+      "maximum": 1048576,
+      "globalCeiling": 4194304
     },
     "progressStepBytes": {
-      "default": null,
-      "minimum": null,
-      "maximum": null,
-      "globalCeiling": null
+      "default": 1048576,
+      "minimum": 4096,
+      "maximum": 10485760,
+      "globalCeiling": 52428800
     }
   }
 }

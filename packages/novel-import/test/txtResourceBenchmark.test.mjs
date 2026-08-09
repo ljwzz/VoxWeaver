@@ -413,7 +413,7 @@ test('authorized real sample size or hash mismatch fails before synthetic runs a
   }
 });
 
-test('repository evidence placeholders stay explicitly unapproved and non-closing', async () => {
+test('repository exploration evidence stays explicitly unapproved and non-closing', async () => {
   const [profile, results] = await Promise.all([
     readFile(join(repositoryRoot, 'docs', 'validation', 'm1-resource-budget.profile.json'), 'utf8').then(JSON.parse),
     readFile(join(repositoryRoot, 'docs', 'validation', 'm1-resource-budget.results.json'), 'utf8').then(JSON.parse),
@@ -421,5 +421,9 @@ test('repository evidence placeholders stay explicitly unapproved and non-closin
   assert.equal(profile.approval.status, 'unapproved');
   assert.equal(results.approvalStatus, 'unapproved');
   assert.equal(results.eligibleForGateClosure, false);
-  assert.equal(results.status, 'not-run');
+  assert.equal(results.status, 'complete');
+  assert.equal(results.mode, 'explore');
+  assert.equal(results.formalArtifactCreated, false);
+  assert.equal(results.recommendations.approvalStatus, 'unapproved');
+  assert.match(results.gateStatus, /^open-/);
 });
