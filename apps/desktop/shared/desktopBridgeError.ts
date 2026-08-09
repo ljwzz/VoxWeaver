@@ -2,14 +2,17 @@ const DESKTOP_BRIDGE_ERROR_PREFIX = 'VOXWEAVER_DESKTOP_ERROR_V1:';
 
 export interface SerializedDesktopBridgeError {
   readonly code: string;
+  readonly currentArtifactRevisionId?: string;
   readonly message: string;
+  readonly operationId?: string;
   readonly retryable: boolean;
+  readonly taskId?: string;
 }
 
 /**
  * Electron only guarantees an Error message across an isolated-world proxy.
- * Encode the three public, path-free error fields into that message so the
- * Renderer can recover stable semantics without receiving transport details.
+ * Encode the public, path-free fields into that message so the Renderer can
+ * recover stable semantics without receiving transport details.
  */
 export function encodeDesktopBridgeError(
   error: SerializedDesktopBridgeError,
@@ -37,8 +40,15 @@ export function decodeDesktopBridgeError(
       return undefined;
     return {
       code: parsed.code,
+      ...(parsed.currentArtifactRevisionId === undefined
+        ? {}
+        : { currentArtifactRevisionId: parsed.currentArtifactRevisionId }),
       message: parsed.message,
+      ...(parsed.operationId === undefined
+        ? {}
+        : { operationId: parsed.operationId }),
       retryable: parsed.retryable,
+      ...(parsed.taskId === undefined ? {} : { taskId: parsed.taskId }),
     };
   } catch {
     return undefined;
@@ -56,11 +66,58 @@ function isDesktopBridgeError(
   value: unknown,
 ): value is SerializedDesktopBridgeError {
   return isRecord(value)
+    && hasOnlyBridgeErrorKeys(value)
     && typeof value.code === 'string'
     && /^[A-Z][A-Z0-9_]*$/.test(value.code)
     && typeof value.message === 'string'
     && value.message.length > 0
-    && typeof value.retryable === 'boolean';
+    && !containsAbsolutePath(value.message)
+    && typeof value.retryable === 'boolean'
+    && optionalOpaqueId(value, 'operationId')
+    && optionalUuidV4(value, 'taskId')
+    && optionalUuidV4(value, 'currentArtifactRevisionId');
+}
+
+const BRIDGE_ERROR_REQUIRED_KEYS = ['code', 'message', 'retryable'] as const;
+const BRIDGE_ERROR_ALLOWED_KEYS = new Set([
+  ...BRIDGE_ERROR_REQUIRED_KEYS,
+  'currentArtifactRevisionId',
+  'operationId',
+  'taskId',
+]);
+const UUID_V4_PATTERN
+  = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function hasOnlyBridgeErrorKeys(value: Record<string, unknown>): boolean {
+  return BRIDGE_ERROR_REQUIRED_KEYS.every(key => Object.hasOwn(value, key))
+    && Object.keys(value).every(key => BRIDGE_ERROR_ALLOWED_KEYS.has(key));
+}
+
+function optionalOpaqueId(
+  value: Record<string, unknown>,
+  property: 'operationId',
+): boolean {
+  if (!Object.hasOwn(value, property))
+    return true;
+  const identifier = value[property];
+  return typeof identifier === 'string'
+    && identifier.length > 0
+    && identifier.length <= 200
+    && identifier.trimStart() === identifier
+    && identifier.trimEnd() === identifier
+    && !identifier.includes('/')
+    && !identifier.includes('\\')
+    && !identifier.includes('\0');
+}
+
+function optionalUuidV4(
+  value: Record<string, unknown>,
+  property: 'currentArtifactRevisionId' | 'taskId',
+): boolean {
+  if (!Object.hasOwn(value, property))
+    return true;
+  const identifier = value[property];
+  return typeof identifier === 'string' && UUID_V4_PATTERN.test(identifier);
 }
 
 function readErrorMessage(value: unknown): string | undefined {
@@ -72,5 +129,12 @@ function readErrorMessage(value: unknown): string | undefined {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function containsAbsolutePath(value: string): boolean {
+  return /(?:^|[\s"'(])\/\S*|[A-Z]:[\\/]/i.test(value);
 }

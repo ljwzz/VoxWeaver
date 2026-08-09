@@ -1,10 +1,16 @@
 import type {
   AppHealthResult,
   CreateProjectPayload,
-  DesktopError,
   DesktopMethodName,
   DesktopMethodPayload,
   DesktopMethodResult,
+  DesktopNovelImportErrorCode,
+  DesktopNovelImportErrorV1,
+  DesktopNovelImportEventType,
+  DesktopNovelImportEventV1,
+  DesktopNovelImportMethodName,
+  DesktopNovelImportMethodPayload,
+  DesktopNovelImportMethodResult,
   DirectorySelectionPurpose,
   OpenProjectPayload,
   ProjectSummaryDto,
@@ -14,9 +20,17 @@ import type {
 } from '@voxweaver/contracts';
 
 import {
+  DESKTOP_NOVEL_IMPORT_ERROR_RETRYABILITY,
+  DESKTOP_NOVEL_IMPORT_EVENT_TYPES,
+  DESKTOP_NOVEL_IMPORT_METHOD_NAMES,
   DESKTOP_PROTOCOL_VERSION,
+  DesktopNovelImportValidationError,
   parseDesktopMethodPayload,
   parseDesktopMethodResult,
+  parseDesktopNovelImportError,
+  parseDesktopNovelImportEvent,
+  parseDesktopNovelImportMethodPayload,
+  parseDesktopNovelImportMethodResult,
   parseDesktopResponse,
 } from '@voxweaver/contracts';
 import { contextBridge, ipcRenderer } from 'electron';
@@ -42,24 +56,81 @@ export interface ProjectContext {
 
 export interface DesktopBridgeErrorFields {
   readonly code: string;
+  readonly currentArtifactRevisionId?: string;
+  readonly operationId?: string;
   readonly retryable: boolean;
+  readonly taskId?: string;
+}
+
+interface DesktopBridgeErrorInput extends DesktopBridgeErrorFields {
+  readonly message: string;
 }
 
 export class DesktopBridgeError extends Error implements DesktopBridgeErrorFields {
   readonly code: string;
+  readonly currentArtifactRevisionId?: string;
+  readonly operationId?: string;
   readonly retryable: boolean;
+  readonly taskId?: string;
 
-  constructor(error: DesktopError) {
+  constructor(error: DesktopBridgeErrorInput) {
     const message = sanitizeErrorMessage(error);
     super(encodeDesktopBridgeError({
       code: error.code,
+      ...(error.currentArtifactRevisionId === undefined
+        ? {}
+        : { currentArtifactRevisionId: error.currentArtifactRevisionId }),
       message,
+      ...(error.operationId === undefined
+        ? {}
+        : { operationId: error.operationId }),
       retryable: error.retryable,
+      ...(error.taskId === undefined ? {} : { taskId: error.taskId }),
     }));
     this.code = error.code;
+    if (error.currentArtifactRevisionId !== undefined)
+      this.currentArtifactRevisionId = error.currentArtifactRevisionId;
     this.name = 'DesktopBridgeError';
+    if (error.operationId !== undefined)
+      this.operationId = error.operationId;
     this.retryable = error.retryable;
+    if (error.taskId !== undefined)
+      this.taskId = error.taskId;
   }
+}
+
+type NovelImportMethodInvoker<TMethod extends DesktopNovelImportMethodName> = (
+  payload: DesktopNovelImportMethodPayload<TMethod>,
+) => Promise<DesktopNovelImportMethodResult<TMethod>>;
+
+export interface NovelImportDesktopApi {
+  readonly cancelTask: NovelImportMethodInvoker<
+    typeof DESKTOP_NOVEL_IMPORT_METHOD_NAMES.CANCEL_TASK
+  >;
+  readonly executeReviewCommand: NovelImportMethodInvoker<
+    typeof DESKTOP_NOVEL_IMPORT_METHOD_NAMES.EXECUTE_REVIEW_COMMAND
+  >;
+  readonly getTask: NovelImportMethodInvoker<
+    typeof DESKTOP_NOVEL_IMPORT_METHOD_NAMES.GET_TASK
+  >;
+  readonly inspect: NovelImportMethodInvoker<
+    typeof DESKTOP_NOVEL_IMPORT_METHOD_NAMES.INSPECT
+  >;
+  readonly onEvent: (
+    listener: (event: DesktopNovelImportEventV1) => void,
+  ) => () => void;
+  readonly previewStaleImpact: NovelImportMethodInvoker<
+    typeof DESKTOP_NOVEL_IMPORT_METHOD_NAMES.PREVIEW_STALE_IMPACT
+  >;
+  readonly retryTask: NovelImportMethodInvoker<
+    typeof DESKTOP_NOVEL_IMPORT_METHOD_NAMES.RETRY_TASK
+  >;
+  readonly selectSource: NovelImportMethodInvoker<
+    typeof DESKTOP_NOVEL_IMPORT_METHOD_NAMES.SELECT_SOURCE
+  >;
+  readonly start: NovelImportMethodInvoker<
+    typeof DESKTOP_NOVEL_IMPORT_METHOD_NAMES.START
+  >;
 }
 
 export interface VoxWeaverDesktopApi {
@@ -71,6 +142,7 @@ export interface VoxWeaverDesktopApi {
       readonly purpose: DirectorySelectionPurpose;
     }) => Promise<SelectDirectoryResult>;
   };
+  readonly novelImport: NovelImportDesktopApi;
   readonly project: {
     readonly close: () => Promise<void>;
     readonly create: (payload: CreateProjectPayload) => Promise<ProjectSummaryDto>;
@@ -91,6 +163,41 @@ const desktopApi: VoxWeaverDesktopApi = {
     selectDirectory: async payload => invokeDesktopMethod(
       'dialog.selectDirectory',
       normalizeSelectDirectoryPayload(payload),
+    ),
+  },
+  novelImport: {
+    cancelTask: async payload => invokeNovelImportMethod(
+      DESKTOP_NOVEL_IMPORT_METHOD_NAMES.CANCEL_TASK,
+      payload,
+    ),
+    executeReviewCommand: async payload => invokeNovelImportMethod(
+      DESKTOP_NOVEL_IMPORT_METHOD_NAMES.EXECUTE_REVIEW_COMMAND,
+      payload,
+    ),
+    getTask: async payload => invokeNovelImportMethod(
+      DESKTOP_NOVEL_IMPORT_METHOD_NAMES.GET_TASK,
+      payload,
+    ),
+    inspect: async payload => invokeNovelImportMethod(
+      DESKTOP_NOVEL_IMPORT_METHOD_NAMES.INSPECT,
+      payload,
+    ),
+    onEvent: onNovelImportEvent,
+    previewStaleImpact: async payload => invokeNovelImportMethod(
+      DESKTOP_NOVEL_IMPORT_METHOD_NAMES.PREVIEW_STALE_IMPACT,
+      payload,
+    ),
+    retryTask: async payload => invokeNovelImportMethod(
+      DESKTOP_NOVEL_IMPORT_METHOD_NAMES.RETRY_TASK,
+      payload,
+    ),
+    selectSource: async payload => invokeNovelImportMethod(
+      DESKTOP_NOVEL_IMPORT_METHOD_NAMES.SELECT_SOURCE,
+      payload,
+    ),
+    start: async payload => invokeNovelImportMethod(
+      DESKTOP_NOVEL_IMPORT_METHOD_NAMES.START,
+      payload,
     ),
   },
   onCoreState,
@@ -148,6 +255,92 @@ function onCoreState(listener: (state: CoreStateUpdate) => void): () => void {
   };
 }
 
+function onNovelImportEvent(
+  listener: (event: DesktopNovelImportEventV1) => void,
+): () => void {
+  if (typeof listener !== 'function')
+    throw new TypeError('Novel-import event listener must be a function.');
+
+  const registrations = Object.values(DESKTOP_NOVEL_IMPORT_EVENT_TYPES).map(
+    (eventType) => {
+      const channel = desktopNovelImportIpcChannel(eventType);
+      const wrappedListener = (
+        _event: Electron.IpcRendererEvent,
+        value: unknown,
+      ) => {
+        let event: DesktopNovelImportEventV1;
+        try {
+          event = parseNovelImportEventEnvelope(eventType, value);
+        } catch {
+          return;
+        }
+        if (!isActiveNovelImportSession(event))
+          return;
+        listener(event);
+      };
+      ipcRenderer.on(channel, wrappedListener);
+      return { channel, wrappedListener };
+    },
+  );
+  let subscribed = true;
+
+  return () => {
+    if (!subscribed)
+      return;
+    subscribed = false;
+    for (const registration of registrations) {
+      ipcRenderer.removeListener(
+        registration.channel,
+        registration.wrappedListener,
+      );
+    }
+  };
+}
+
+async function invokeNovelImportMethod<
+  TMethod extends DesktopNovelImportMethodName,
+>(
+  method: TMethod,
+  payload: DesktopNovelImportMethodPayload<TMethod>,
+): Promise<DesktopNovelImportMethodResult<TMethod>> {
+  let safePayload: DesktopNovelImportMethodPayload<TMethod>;
+  try {
+    safePayload = parseDesktopNovelImportMethodPayload(method, payload);
+  } catch (error) {
+    throw createNovelImportPayloadError(error);
+  }
+
+  const requestedSession = toProjectContext(safePayload);
+  assertActiveNovelImportSession(requestedSession);
+
+  let rawResponse: unknown;
+  try {
+    rawResponse = await ipcRenderer.invoke(
+      desktopNovelImportIpcChannel(method),
+      {
+        messageKind: 'payload',
+        method,
+        payload: safePayload,
+      },
+    );
+  } catch {
+    assertActiveNovelImportSession(requestedSession);
+    throw createNovelImportBridgeError('DESKTOP_CORE_UNAVAILABLE');
+  }
+
+  assertActiveNovelImportSession(requestedSession);
+  let response: ParsedNovelImportResponse<TMethod>;
+  try {
+    response = parseNovelImportIpcResponse(method, requestedSession, rawResponse);
+  } catch {
+    throw createNovelImportBridgeError('DESKTOP_CORE_UNAVAILABLE');
+  }
+  if (!response.ok) {
+    throw new DesktopBridgeError(response.error);
+  }
+  return response.result;
+}
+
 async function invokeDesktopMethod<TMethod extends DesktopMethodName>(
   method: TMethod,
   payload: DesktopMethodPayload<TMethod>,
@@ -174,8 +367,13 @@ async function invokeDesktopMethod<TMethod extends DesktopMethodName>(
     throw createCoreUnavailableError();
   }
 
-  if (!response.ok)
-    throw new DesktopBridgeError(response.error);
+  if (!response.ok) {
+    throw new DesktopBridgeError({
+      code: response.error.code,
+      message: response.error.message,
+      retryable: response.error.retryable,
+    });
+  }
 
   let parsedResult: DesktopMethodResult<TMethod>;
   try {
@@ -201,6 +399,24 @@ function createCoreUnavailableError(): DesktopBridgeError {
     code: 'DESKTOP_CORE_UNAVAILABLE',
     message: 'The desktop request could not be completed.',
     retryable: true,
+  });
+}
+
+function createNovelImportPayloadError(error: unknown): DesktopBridgeError {
+  const code = error instanceof DesktopNovelImportValidationError
+    && error.code === 'DESKTOP_NOVEL_IMPORT_VERSION_UNSUPPORTED'
+    ? 'DESKTOP_PROTOCOL_UNSUPPORTED'
+    : 'DESKTOP_PAYLOAD_INVALID';
+  return createNovelImportBridgeError(code);
+}
+
+function createNovelImportBridgeError(
+  code: DesktopNovelImportErrorCode,
+): DesktopBridgeError {
+  return new DesktopBridgeError({
+    code,
+    message: 'The novel import request could not be completed.',
+    retryable: DESKTOP_NOVEL_IMPORT_ERROR_RETRYABILITY[code],
   });
 }
 
@@ -371,11 +587,102 @@ function sanitizeRecentProject(result: RecentProjectDto): RecentProjectDto {
   };
 }
 
-function toProjectContext(project: ProjectSummaryDto): ProjectContext {
+function toProjectContext(project: ProjectContext): ProjectContext {
   return {
     projectId: project.projectId,
     projectSessionId: project.projectSessionId,
   };
+}
+
+type ParsedNovelImportResponse<TMethod extends DesktopNovelImportMethodName>
+  = | {
+    readonly ok: true;
+    readonly result: DesktopNovelImportMethodResult<TMethod>;
+  }
+  | {
+    readonly ok: false;
+    readonly error: DesktopNovelImportErrorV1;
+  };
+
+function parseNovelImportIpcResponse<
+  TMethod extends DesktopNovelImportMethodName,
+>(
+  method: TMethod,
+  expectedSession: ProjectContext,
+  value: unknown,
+): ParsedNovelImportResponse<TMethod> {
+  if (!isRecord(value))
+    throw new TypeError('Novel-import IPC response must be an object.');
+
+  if (value.messageKind === 'result') {
+    if (
+      !hasExactKeys(value, ['messageKind', 'method', 'result'])
+      || value.method !== method
+    ) {
+      throw new TypeError('Novel-import result envelope is invalid.');
+    }
+    const result = parseDesktopNovelImportMethodResult(method, value.result);
+    assertSameNovelImportSession(expectedSession, result);
+    return { ok: true, result };
+  }
+
+  if (value.messageKind === 'error') {
+    if (!hasExactKeys(value, ['messageKind', 'error']))
+      throw new TypeError('Novel-import error envelope is invalid.');
+    const error = parseDesktopNovelImportError(value.error);
+    if (error.method !== method)
+      throw new TypeError('Novel-import error method does not match its request.');
+    assertSameNovelImportSession(expectedSession, error);
+    return { ok: false, error };
+  }
+
+  throw new TypeError('Novel-import IPC response kind is invalid.');
+}
+
+function parseNovelImportEventEnvelope(
+  expectedType: DesktopNovelImportEventType,
+  value: unknown,
+): DesktopNovelImportEventV1 {
+  if (
+    !isRecord(value)
+    || !hasExactKeys(value, ['messageKind', 'event'])
+    || value.messageKind !== 'event'
+  ) {
+    throw new TypeError('Novel-import event envelope is invalid.');
+  }
+  const event = parseDesktopNovelImportEvent(value.event);
+  if (event.eventType !== expectedType)
+    throw new TypeError('Novel-import event channel does not match its type.');
+  return event;
+}
+
+function desktopNovelImportIpcChannel(
+  name: DesktopNovelImportMethodName | DesktopNovelImportEventType,
+): string {
+  return `${IPC_CHANNEL_PREFIX}${name}`;
+}
+
+function assertActiveNovelImportSession(session: ProjectContext): void {
+  if (isActiveNovelImportSession(session))
+    return;
+  throw createNovelImportBridgeError('PROJECT_SESSION_STALE');
+}
+
+function isActiveNovelImportSession(session: ProjectContext): boolean {
+  return activeProjectContext?.projectId === session.projectId
+    && activeProjectContext.projectSessionId === session.projectSessionId;
+}
+
+function assertSameNovelImportSession(
+  expected: ProjectContext,
+  actual: ProjectContext,
+): void {
+  if (
+    actual.projectId !== expected.projectId
+    || actual.projectSessionId !== expected.projectSessionId
+  ) {
+    throw new TypeError('Novel-import response project session is invalid.');
+  }
 }
 
 function parseCoreState(value: unknown): CoreStateUpdate | undefined {
@@ -442,7 +749,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function sanitizeErrorMessage(error: DesktopError): string {
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expectedKeys: readonly string[],
+): boolean {
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === expectedKeys.length
+    && expectedKeys.every(key => Object.hasOwn(value, key));
+}
+
+function sanitizeErrorMessage(error: DesktopBridgeErrorInput): string {
   if (containsAbsolutePath(error.message))
     return 'The desktop request could not be completed.';
   return error.message;
