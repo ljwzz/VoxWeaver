@@ -1,0 +1,616 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxweaver.local/schemas/novel-import-review.schema.json",
+  "title": "VoxWeaver M1 novel import review DTOs",
+  "oneOf": [
+    { "$ref": "#/$defs/reviewQueryV1" },
+    { "$ref": "#/$defs/reviewCommandV1" },
+    { "$ref": "#/$defs/reviewSnapshotV1" },
+    { "$ref": "#/$defs/stalePreviewQueryV1" },
+    { "$ref": "#/$defs/stalePreviewV1" }
+  ],
+  "$defs": {
+    "baselineRevisionV1": {
+      "type": "object",
+      "required": ["artifactId", "artifactRevisionId", "canonicalTextRevision"],
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "artifactRevisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "canonicalTextRevision": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRevisionRefV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "changeSelectorV1": {
+      "type": "object",
+      "properties": {
+        "blockIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "chapterIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+          }
+        }
+      },
+      "anyOf": [{ "required": ["blockIds"] }, { "required": ["chapterIds"] }],
+      "additionalProperties": false
+    },
+    "reviewQueryV1": {
+      "type": "object",
+      "required": [
+        "documentType",
+        "schemaVersion",
+        "readOnly",
+        "baselineRevision"
+      ],
+      "properties": {
+        "documentType": { "const": "novel-import-review-query" },
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "readOnly": { "const": true },
+        "baselineRevision": { "$ref": "#/$defs/baselineRevisionV1" }
+      },
+      "additionalProperties": false
+    },
+    "classifyRangeCommandV1": {
+      "type": "object",
+      "required": [
+        "documentType",
+        "schemaVersion",
+        "commandType",
+        "baselineRevision",
+        "requestedBy",
+        "targetRange",
+        "classification"
+      ],
+      "properties": {
+        "documentType": { "const": "novel-import-review-command" },
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "baselineRevision": { "$ref": "#/$defs/baselineRevisionV1" },
+        "requestedBy": { "type": "string", "minLength": 1 },
+        "commandType": { "const": "classify-uncovered-range" },
+        "targetRange": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "classification": {
+          "type": "string",
+          "enum": ["front_matter", "appendix", "noise", "unknown"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "adjustBoundaryCommandV1": {
+      "type": "object",
+      "required": [
+        "documentType",
+        "schemaVersion",
+        "commandType",
+        "baselineRevision",
+        "requestedBy",
+        "chapterId",
+        "headingRange",
+        "contentRange"
+      ],
+      "properties": {
+        "documentType": { "const": "novel-import-review-command" },
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "baselineRevision": { "$ref": "#/$defs/baselineRevisionV1" },
+        "requestedBy": { "type": "string", "minLength": 1 },
+        "commandType": { "const": "adjust-chapter-boundary" },
+        "chapterId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "headingRange": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "contentRange": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "normalizationDecisionCommandV1": {
+      "type": "object",
+      "required": [
+        "documentType",
+        "schemaVersion",
+        "commandType",
+        "baselineRevision",
+        "requestedBy",
+        "proposalId",
+        "decision"
+      ],
+      "properties": {
+        "documentType": { "const": "novel-import-review-command" },
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "baselineRevision": { "$ref": "#/$defs/baselineRevisionV1" },
+        "requestedBy": { "type": "string", "minLength": 1 },
+        "commandType": { "const": "decide-normalization-proposal" },
+        "proposalId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "decision": { "type": "string", "enum": ["approved", "rejected"] },
+        "note": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "rerunSelectionCommandV1": {
+      "type": "object",
+      "required": [
+        "documentType",
+        "schemaVersion",
+        "commandType",
+        "baselineRevision",
+        "requestedBy",
+        "selector"
+      ],
+      "properties": {
+        "documentType": { "const": "novel-import-review-command" },
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "baselineRevision": { "$ref": "#/$defs/baselineRevisionV1" },
+        "requestedBy": { "type": "string", "minLength": 1 },
+        "commandType": { "const": "rerun-selection" },
+        "selector": { "$ref": "#/$defs/changeSelectorV1" }
+      },
+      "additionalProperties": false
+    },
+    "reviewCommandV1": {
+      "oneOf": [
+        { "$ref": "#/$defs/classifyRangeCommandV1" },
+        { "$ref": "#/$defs/adjustBoundaryCommandV1" },
+        { "$ref": "#/$defs/normalizationDecisionCommandV1" },
+        { "$ref": "#/$defs/rerunSelectionCommandV1" }
+      ]
+    },
+    "sourceSummaryV1": {
+      "type": "object",
+      "required": [
+        "sourceAssetId",
+        "format",
+        "byteLength",
+        "contentHash",
+        "encoding"
+      ],
+      "properties": {
+        "sourceAssetId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "format": { "const": "txt" },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "contentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "encoding": {
+          "type": "string",
+          "enum": ["utf-8", "gbk", "gb18030", "big5", "utf-16le", "utf-16be"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "adapterSummaryV1": {
+      "type": "object",
+      "required": ["adapterId", "adapterVersion", "selectionMethod"],
+      "properties": {
+        "adapterId": { "type": "string", "minLength": 1 },
+        "adapterVersion": { "type": "string", "minLength": 1 },
+        "selectionMethod": { "type": "string", "enum": ["explicit", "probe"] }
+      },
+      "additionalProperties": false
+    },
+    "layerDiffHunkV1": {
+      "type": "object",
+      "required": [
+        "operation",
+        "fromRange",
+        "toRange",
+        "beforeText",
+        "afterText"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": ["delete", "insert", "replace"]
+        },
+        "fromRange": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "toRange": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "beforeText": { "type": "string" },
+        "afterText": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "layerDiffV1": {
+      "type": "object",
+      "required": ["fromRevision", "toRevision", "hunks"],
+      "properties": {
+        "fromRevision": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRevisionRefV1"
+        },
+        "toRevision": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRevisionRefV1"
+        },
+        "hunks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/layerDiffHunkV1" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tableOfContentsEvidenceV1": {
+      "type": "object",
+      "required": [
+        "evidenceId",
+        "kind",
+        "range",
+        "rawText",
+        "candidateIds",
+        "confidence",
+        "reviewStatus"
+      ],
+      "properties": {
+        "evidenceId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["candidate-sequence", "explicit-toc", "structural-hint"]
+        },
+        "range": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "rawText": { "type": "string", "minLength": 1 },
+        "candidateIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "reviewStatus": {
+          "type": "string",
+          "enum": ["not_required", "pending", "approved", "rejected"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "uncoveredRangeReviewV1": {
+      "type": "object",
+      "required": ["range", "reviewStatus"],
+      "properties": {
+        "range": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "suggestedClassification": {
+          "type": "string",
+          "enum": ["front_matter", "appendix", "noise", "unknown"]
+        },
+        "reviewStatus": {
+          "type": "string",
+          "enum": ["not_required", "pending", "approved", "rejected"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "revisionHistoryEntryV1": {
+      "type": "object",
+      "required": [
+        "artifactId",
+        "artifactRevisionId",
+        "sourceAssetId",
+        "sourceHash",
+        "processorId",
+        "processorVersion",
+        "rawTextRevision",
+        "canonicalTextRevision",
+        "normalizedTextRevision",
+        "active"
+      ],
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "artifactRevisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "sourceAssetId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "sourceHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "processorId": { "type": "string", "minLength": 1 },
+        "processorVersion": { "type": "string", "minLength": 1 },
+        "rawTextRevision": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRevisionRefV1"
+        },
+        "canonicalTextRevision": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRevisionRefV1"
+        },
+        "normalizedTextRevision": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRevisionRefV1"
+        },
+        "active": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "normalizationProposalV1": {
+      "type": "object",
+      "required": [
+        "proposalId",
+        "canonicalRange",
+        "operation",
+        "beforeText",
+        "afterText",
+        "contextBefore",
+        "contextAfter",
+        "ruleId",
+        "ruleVersion",
+        "reason",
+        "evidence",
+        "confidence",
+        "confidenceSource",
+        "risk",
+        "proposedBy",
+        "reviewStatus",
+        "conflictProposalIds"
+      ],
+      "properties": {
+        "proposalId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "canonicalRange": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "operation": { "type": "string", "enum": ["delete", "replace"] },
+        "beforeText": { "type": "string", "minLength": 1 },
+        "afterText": { "type": "string" },
+        "contextBefore": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "contextAfter": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "ruleId": { "type": "string", "minLength": 1 },
+        "ruleVersion": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "confidenceSource": { "type": "string", "minLength": 1 },
+        "risk": { "type": "string", "enum": ["high", "low", "medium"] },
+        "proposedBy": { "type": "string", "minLength": 1 },
+        "operator": { "type": "string", "minLength": 1 },
+        "reviewStatus": {
+          "type": "string",
+          "enum": ["approved", "not_required", "pending", "rejected"]
+        },
+        "reviewedBy": { "type": "string", "minLength": 1 },
+        "conflictProposalIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "reviewSnapshotV1": {
+      "type": "object",
+      "required": [
+        "documentType",
+        "schemaVersion",
+        "readOnly",
+        "baselineRevision",
+        "source",
+        "adapter",
+        "textRevisions",
+        "layerDiffs",
+        "chapterCandidates",
+        "chapters",
+        "tableOfContentsEvidence",
+        "coverage",
+        "issues",
+        "uncoveredRanges",
+        "revisionHistory",
+        "normalizationProposals"
+      ],
+      "properties": {
+        "documentType": { "const": "novel-import-review-snapshot" },
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "readOnly": { "type": "boolean" },
+        "baselineRevision": { "$ref": "#/$defs/baselineRevisionV1" },
+        "source": { "$ref": "#/$defs/sourceSummaryV1" },
+        "adapter": { "$ref": "#/$defs/adapterSummaryV1" },
+        "textRevisions": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRevisionRefV1"
+          }
+        },
+        "layerDiffs": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/layerDiffV1" }
+        },
+        "chapterCandidates": {
+          "type": "array",
+          "items": {
+            "$ref": "https://voxweaver.local/schemas/novel-import.schema.json#/$defs/chapterCandidateV1"
+          }
+        },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "$ref": "https://voxweaver.local/schemas/novel-import.schema.json#/$defs/chapterIndexEntryV1"
+          }
+        },
+        "tableOfContentsEvidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tableOfContentsEvidenceV1" }
+        },
+        "coverage": {
+          "$ref": "https://voxweaver.local/schemas/novel-import.schema.json#/$defs/coverageReportV1"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "$ref": "https://voxweaver.local/schemas/novel-import.schema.json#/$defs/importIssueV1"
+          }
+        },
+        "uncoveredRanges": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uncoveredRangeReviewV1" }
+        },
+        "revisionHistory": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/revisionHistoryEntryV1" }
+        },
+        "normalizationProposals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/normalizationProposalV1" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "stalePreviewQueryV1": {
+      "type": "object",
+      "required": [
+        "documentType",
+        "schemaVersion",
+        "readOnly",
+        "baselineRevision",
+        "changeKind",
+        "changeSelector"
+      ],
+      "properties": {
+        "documentType": { "const": "novel-import-stale-preview-query" },
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "readOnly": { "const": true },
+        "baselineRevision": { "$ref": "#/$defs/baselineRevisionV1" },
+        "changeKind": {
+          "type": "string",
+          "enum": [
+            "boundary-adjustment",
+            "normalization-decision",
+            "range-classification",
+            "selection-rerun"
+          ]
+        },
+        "changeSelector": { "$ref": "#/$defs/changeSelectorV1" }
+      },
+      "additionalProperties": false
+    },
+    "staleImpactV1": {
+      "type": "object",
+      "required": [
+        "consumerArtifactId",
+        "consumerRevisionId",
+        "producerArtifactId",
+        "producerRevisionId",
+        "dependencyType",
+        "depth"
+      ],
+      "properties": {
+        "consumerArtifactId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "consumerRevisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "producerArtifactId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "producerRevisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "dependencyType": {
+          "type": "string",
+          "enum": ["content", "structure", "voice", "pronunciation", "config"]
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "selector": { "$ref": "#/$defs/changeSelectorV1" }
+      },
+      "additionalProperties": false
+    },
+    "stalePreviewV1": {
+      "type": "object",
+      "required": [
+        "documentType",
+        "schemaVersion",
+        "baselineRevision",
+        "currentArtifactRevisionId",
+        "baselineStatus",
+        "canApply",
+        "changeSelector",
+        "impacts"
+      ],
+      "properties": {
+        "documentType": { "const": "novel-import-stale-preview" },
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "baselineRevision": { "$ref": "#/$defs/baselineRevisionV1" },
+        "currentArtifactRevisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "baselineStatus": { "type": "string", "enum": ["current", "stale"] },
+        "canApply": { "type": "boolean" },
+        "changeSelector": { "$ref": "#/$defs/changeSelectorV1" },
+        "impacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/staleImpactV1" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
