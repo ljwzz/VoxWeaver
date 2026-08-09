@@ -359,6 +359,14 @@ test('rejects inconsistent snapshot projections and semantic range errors', () =
 test('validates read-only stale queries and baseline-sensitive impact previews', () => {
   const query = stalePreviewQuery();
   const current = stalePreview();
+  const direct = impact();
+  const transitive = impact({
+    consumerArtifactId: uuid(97),
+    consumerRevisionId: uuid(96),
+    producerArtifactId: direct.consumerArtifactId,
+    producerRevisionId: direct.consumerRevisionId,
+    depth: 2,
+  });
   const stale = stalePreview({
     currentArtifactRevisionId: NEXT_ARTIFACT_REVISION_ID,
     baselineStatus: 'stale',
@@ -368,6 +376,12 @@ test('validates read-only stale queries and baseline-sensitive impact previews',
 
   assert.equal(parseNovelImportStalePreviewQueryV1(query), query);
   assert.equal(parseNovelImportStalePreviewV1(current), current);
+  assert.equal(
+    parseNovelImportStalePreviewV1(stalePreview({
+      impacts: [transitive, direct],
+    })).impacts[0],
+    transitive,
+  );
   assert.equal(parseNovelImportStalePreviewV1(stale), stale);
   assert.equal(parseNovelImportReviewDocumentV1(query), query);
   assert.equal(parseNovelImportReviewDocumentV1(stale), stale);
@@ -380,6 +394,14 @@ test('validates read-only stale queries and baseline-sensitive impact previews',
     {
       ...current,
       impacts: [impact({ producerArtifactId: uuid(98) })],
+    },
+    {
+      ...current,
+      impacts: [direct, impact({
+        producerArtifactId: uuid(95),
+        producerRevisionId: uuid(94),
+        depth: 2,
+      })],
     },
     { ...current, schemaVersion: 2 },
   ]) {

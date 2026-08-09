@@ -734,8 +734,14 @@ const STALE_IMPACT_SCHEMA = {
   properties: {
     consumerArtifactId: UUID_V4,
     consumerRevisionId: UUID_V4,
-    producerArtifactId: UUID_V4,
-    producerRevisionId: UUID_V4,
+    producerArtifactId: {
+      ...UUID_V4,
+      description: 'Immediate producer artifact for this dependency edge; depth 1 is the reviewed baseline artifact.',
+    },
+    producerRevisionId: {
+      ...UUID_V4,
+      description: 'Immediate producer revision for this dependency edge; depth 1 is the current reviewed producer revision.',
+    },
     dependencyType: {
       type: 'string',
       enum: ['content', 'structure', 'voice', 'pronunciation', 'config'],
@@ -774,6 +780,7 @@ const STALE_PREVIEW_SCHEMA = {
     changeSelector: { $ref: '#/$defs/changeSelectorV1' },
     impacts: {
       type: 'array',
+      description: 'Depth-1 edges start at the reviewed producer. Every deeper edge names a consumer from the immediately preceding depth as its producer.',
       items: { $ref: '#/$defs/staleImpactV1' },
     },
   },
@@ -919,14 +926,40 @@ export function parseNovelImportStalePreviewV1(
     fail('Stale preview status must match the current artifact revision');
   }
 
+  const consumersByDepth = new Map<number, Set<string>>();
   for (const impact of preview.impacts) {
-    if (impact.producerArtifactId !== baseline.artifactId)
-      fail('Stale preview impact must reference the baseline artifact');
-    if (impact.producerRevisionId !== preview.currentArtifactRevisionId) {
-      fail('Stale preview impact must reference the current producer revision');
+    const consumers = consumersByDepth.get(impact.depth) ?? new Set<string>();
+    consumers.add(impactNodeKey(
+      impact.consumerArtifactId,
+      impact.consumerRevisionId,
+    ));
+    consumersByDepth.set(impact.depth, consumers);
+  }
+
+  for (const impact of preview.impacts) {
+    if (impact.depth === 1) {
+      if (impact.producerArtifactId !== baseline.artifactId) {
+        fail('Direct stale preview impact must reference the baseline artifact');
+      }
+      if (impact.producerRevisionId !== preview.currentArtifactRevisionId) {
+        fail('Direct stale preview impact must reference the current producer revision');
+      }
+      continue;
+    }
+
+    const previousConsumers = consumersByDepth.get(impact.depth - 1);
+    if (!previousConsumers?.has(impactNodeKey(
+      impact.producerArtifactId,
+      impact.producerRevisionId,
+    ))) {
+      fail('Transitive stale preview impact must continue a prior-depth consumer');
     }
   }
   return preview;
+}
+
+function impactNodeKey(artifactId: string, revisionId: string): string {
+  return `${artifactId}:${revisionId}`;
 }
 
 function parseBaselineRevision(

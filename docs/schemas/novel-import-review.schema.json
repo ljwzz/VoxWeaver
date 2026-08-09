@@ -563,10 +563,12 @@
         },
         "producerArtifactId": {
           "type": "string",
+          "description": "Immediate producer artifact for this dependency edge; depth 1 is the reviewed baseline artifact.",
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
         },
         "producerRevisionId": {
           "type": "string",
+          "description": "Immediate producer revision for this dependency edge; depth 1 is the current reviewed producer revision.",
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
         },
         "dependencyType": {
@@ -607,6 +609,7 @@
         "changeSelector": { "$ref": "#/$defs/changeSelectorV1" },
         "impacts": {
           "type": "array",
+          "description": "Depth-1 edges start at the reviewed producer. Every deeper edge names a consumer from the immediately preceding depth as its producer.",
           "items": { "$ref": "#/$defs/staleImpactV1" }
         }
       },
