@@ -92,12 +92,18 @@ importers:
       '@voxweaver/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@voxweaver/llm-engine':
+        specifier: workspace:*
+        version: link:../llm-engine
       '@voxweaver/novel-domain':
         specifier: workspace:*
         version: link:../novel-domain
       '@voxweaver/novel-import':
         specifier: workspace:*
         version: link:../novel-import
+      '@voxweaver/speaker-analysis':
+        specifier: workspace:*
+        version: link:../speaker-analysis
       '@voxweaver/text-pipeline':
         specifier: workspace:*
         version: link:../text-pipeline
@@ -115,6 +121,15 @@ importers:
       ajv-formats:
         specifier: 3.0.1
         version: 3.0.1(ajv@8.17.1)
+
+  packages/llm-engine:
+    dependencies:
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@voxweaver/provider-core':
+        specifier: workspace:*
+        version: link:../provider-core
 
   packages/novel-domain:
     dependencies:
@@ -140,11 +155,35 @@ importers:
         specifier: workspace:*
         version: link:../workflow-core
 
+  packages/provider-core:
+    dependencies:
+      '@voxweaver/common':
+        specifier: workspace:*
+        version: link:../common
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/speaker-analysis:
+    dependencies:
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@voxweaver/llm-engine':
+        specifier: workspace:*
+        version: link:../llm-engine
+      '@voxweaver/novel-domain':
+        specifier: workspace:*
+        version: link:../novel-domain
+
   packages/text-pipeline:
     dependencies:
       '@voxweaver/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@voxweaver/llm-engine':
+        specifier: workspace:*
+        version: link:../llm-engine
       '@voxweaver/novel-domain':
         specifier: workspace:*
         version: link:../novel-domain
@@ -163,12 +202,18 @@ importers:
       '@voxweaver/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@voxweaver/llm-engine':
+        specifier: workspace:*
+        version: link:../../packages/llm-engine
       '@voxweaver/novel-import':
         specifier: workspace:*
         version: link:../../packages/novel-import
       '@voxweaver/project-workspace':
         specifier: workspace:*
         version: link:../../packages/project-workspace
+      '@voxweaver/provider-core':
+        specifier: workspace:*
+        version: link:../../packages/provider-core
       '@voxweaver/text-pipeline':
         specifier: workspace:*
         version: link:../../packages/text-pipeline

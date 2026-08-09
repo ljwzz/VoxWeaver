@@ -18,5 +18,9 @@
     "test": "tsc -p tsconfig.json && node --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:source": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@voxweaver/common": "workspace:*",
+    "@voxweaver/contracts": "workspace:*"
   }
 }

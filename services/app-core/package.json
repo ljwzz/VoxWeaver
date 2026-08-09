@@ -22,8 +22,10 @@
   "dependencies": {
     "@voxweaver/application": "workspace:*",
     "@voxweaver/contracts": "workspace:*",
+    "@voxweaver/llm-engine": "workspace:*",
     "@voxweaver/novel-import": "workspace:*",
     "@voxweaver/project-workspace": "workspace:*",
+    "@voxweaver/provider-core": "workspace:*",
     "@voxweaver/text-pipeline": "workspace:*"
   }
 }

@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@voxweaver/contracts": "workspace:*",
+    "@voxweaver/llm-engine": "workspace:*",
     "@voxweaver/novel-domain": "workspace:*"
   }
 }
