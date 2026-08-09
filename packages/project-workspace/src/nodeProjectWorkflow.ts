@@ -26,12 +26,21 @@ import type {
   ProjectWorkflowPort,
   RecordReviewDecisionCommand,
   RegisterSourceAssetCommand,
+  SourceAssetCommitCommand,
+  SourceAssetCommitIntent,
+  SourceAssetCommitPort,
   WorkflowRecoveryReport,
 } from '@voxweaver/workflow-core';
-import type { ProjectStateLifecycleOptions } from './nodeProjectStateStore.js';
+import type { Stats } from 'node:fs';
+import type {
+  ProjectStateLifecycleOptions,
+  SourceAssetCommitMapping,
+} from './nodeProjectStateStore.js';
+import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, constants as fileSystemConstants } from 'node:fs';
 import {
+  link,
   lstat,
   mkdir,
   open,
@@ -41,6 +50,7 @@ import {
   rename,
   rmdir,
   stat,
+  unlink,
   writeFile,
 } from 'node:fs/promises';
 import {
@@ -57,21 +67,97 @@ import {
   ARTIFACT_REVISION_DOCUMENT_SCHEMA_VERSION,
   parseArtifactRecord,
   parseArtifactRevisionDocument,
+  parseProjectWriteLock,
   parseSourceAssetRecord,
 } from '@voxweaver/contracts';
-import { sha256CanonicalJson } from '@voxweaver/workflow-core';
+import {
+  classifySourceAssetCommitAttempt,
+  parseSourceAssetCommitCommand,
+  sha256CanonicalJson,
+  SourceAssetCommitError,
+} from '@voxweaver/workflow-core';
 
 import { NodeProjectStateStore } from './nodeProjectStateStore.js';
+import { ProjectStateError } from './projectStateError.js';
 import { ProjectWorkflowError } from './projectWorkflowError.js';
 
-export interface NodeProjectWorkflowOptions extends ProjectStateLifecycleOptions {}
+export type SourceAssetCommitCheckpoint
+  = | 'before-inputs-write'
+    | 'finalize-result-unknown'
+    | 'publishing-temporary-ready'
+    | 'published'
+    | 'finalized';
+
+export interface SourceAssetCommitCheckpointContext {
+  readonly idempotencyKey: string;
+  readonly publishingTemporaryRelativePath: string;
+  readonly sourceAssetId: string;
+  readonly targetRelativePath: string;
+}
+
+export interface NodeProjectWorkflowOptions extends ProjectStateLifecycleOptions {
+  /** Deterministic crash-window barrier for SourceAsset commit tests. @internal */
+  sourceAssetCommitCheckpoint?: (
+    checkpoint: SourceAssetCommitCheckpoint,
+    context: SourceAssetCommitCheckpointContext,
+  ) => Promise<void> | void;
+}
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const SOURCE_ASSET_COPY_BUFFER_BYTES = 64 * 1024;
+const SOURCE_ASSET_PUBLISHING_DIRECTORY_RELATIVE_PATH
+  = 'inputs/.source-asset-commit-staging';
+const SOURCE_ASSET_COMMIT_RECOVERY_REASON = 'source_asset_commit_unproven';
+const PROJECT_WRITE_LOCK_MAX_BYTES = 16 * 1024;
+const PROJECT_WRITE_LOCK_RELATIVE_PATH = 'state/locks/project-write.lock';
 
-export class NodeProjectWorkflow implements ProjectWorkflowPort {
+interface PhysicalFileIdentity {
+  readonly device: number;
+  readonly inode: number;
+}
+
+interface PhysicalFileEvidence {
+  readonly byteLength: number;
+  readonly contentHash: string;
+  readonly identity: PhysicalFileIdentity;
+  readonly linkCount: number;
+}
+
+type PhysicalFileObservation
+  = | { readonly kind: 'missing' }
+    | { readonly cause: unknown; readonly kind: 'invalid' }
+    | { readonly byteLength: number; readonly kind: 'size-mismatch' }
+    | { readonly evidence: PhysicalFileEvidence; readonly kind: 'file' };
+
+interface SourceAssetCommitPaths {
+  readonly publishingDirectory: string;
+  readonly publishingTemporaryPath: string;
+  readonly publishingTemporaryRelativePath: string;
+  readonly targetDirectory: string;
+  readonly targetPath: string;
+}
+
+interface SourceAssetCopyResult {
+  readonly publishingEvidence: PhysicalFileEvidence;
+  readonly sourceIdentity: PhysicalFileIdentity;
+}
+
+class SourceAssetCommitSupersededByCommitted extends Error {
+  readonly mapping: SourceAssetCommitMapping;
+
+  constructor(mapping: SourceAssetCommitMapping) {
+    super('The source asset commit completed concurrently.');
+    this.mapping = mapping;
+  }
+}
+
+export class NodeProjectWorkflow implements ProjectWorkflowPort, SourceAssetCommitPort {
   readonly #context: ProjectContext;
   readonly #generateId: () => string;
   readonly #now: () => Date;
+  readonly #sourceAssetCommitCheckpoint?: NonNullable<
+    NodeProjectWorkflowOptions['sourceAssetCommitCheckpoint']
+  >;
 
   constructor(
     context: ProjectContext,
@@ -80,6 +166,7 @@ export class NodeProjectWorkflow implements ProjectWorkflowPort {
     this.#context = context;
     this.#generateId = options.generateId ?? randomUUID;
     this.#now = options.now ?? (() => new Date());
+    this.#sourceAssetCommitCheckpoint = options.sourceAssetCommitCheckpoint;
   }
 
   async activateArtifactRevision(
@@ -96,6 +183,102 @@ export class NodeProjectWorkflow implements ProjectWorkflowPort {
 
   cancelTask(taskId: string): Promise<TaskRecord> {
     return this.#withStore(store => store.cancelTask(taskId));
+  }
+
+  async commitSourceAsset(
+    command: SourceAssetCommitCommand,
+  ): Promise<SourceAssetRecord> {
+    const parsedCommand = parseSourceAssetCommitCommand(command);
+    if (this.#context.accessMode !== 'read-write') {
+      throw new ProjectStateError(
+        'PROJECT_STATE_READ_ONLY',
+        'Source assets cannot be committed from a read-only project session.',
+      );
+    }
+    await assertActiveProjectWriteSession(this.#context);
+
+    const existing = await this.#withActiveSourceAssetStore(store =>
+      store.getSourceAssetCommit(parsedCommand.idempotencyKey),
+    );
+    let mapping: SourceAssetCommitMapping;
+
+    if (existing) {
+      const classification = classifySourceAssetCommitAttempt(
+        existing.idempotencyKey,
+        sourceAssetCommitIntentFromMapping(existing),
+        parsedCommand,
+      );
+      if (classification !== 'idempotent') {
+        throw new SourceAssetCommitError(
+          'SOURCE_ASSET_COMMIT_CONFLICT',
+          'The source asset idempotency key is already bound to another intent.',
+        );
+      }
+      mapping = existing;
+    } else {
+      const temporaryPath = sourceAssetTemporaryAbsolutePath(
+        this.#context.projectDirectory,
+        parsedCommand,
+      );
+      const temporaryObservation = await observePhysicalFileWithin(
+        join(this.#context.projectDirectory, 'tmp'),
+        temporaryPath,
+        parsedCommand.expectedByteLength,
+      );
+      assertInitialSourceAssetTemporaryEvidence(
+        temporaryObservation,
+        parsedCommand,
+      );
+
+      const reservation = await this.#withActiveSourceAssetStore(store =>
+        store.reserveSourceAssetCommit(parsedCommand),
+      );
+      if (reservation.classification === 'duplicate') {
+        throw new SourceAssetCommitError(
+          'SOURCE_ASSET_COMMIT_DUPLICATE',
+          'Another idempotency key already owns this source asset identity.',
+        );
+      }
+      if (reservation.classification === 'conflict') {
+        throw new SourceAssetCommitError(
+          'SOURCE_ASSET_COMMIT_CONFLICT',
+          'The source asset idempotency key is already bound to another intent.',
+        );
+      }
+      mapping = reservation.mapping;
+    }
+
+    let paths: SourceAssetCommitPaths;
+    try {
+      paths = sourceAssetCommitPaths(
+        this.#context.projectDirectory,
+        mapping,
+      );
+    } catch (error) {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'target_mapping_invalid',
+        error,
+      );
+    }
+    try {
+      if (mapping.status === 'committed')
+        return this.#completeCommittedSourceAssetRetry(mapping, paths);
+
+      return await this.#continueSourceAssetCommit(
+        parsedCommand,
+        mapping,
+        paths,
+      );
+    } catch (error) {
+      if (error instanceof SourceAssetCommitSupersededByCommitted) {
+        return this.#completeCommittedSourceAssetRetry(
+          error.mapping,
+          paths,
+        );
+      }
+      throw error;
+    }
   }
 
   async commitArtifactRevision(
@@ -562,6 +745,703 @@ export class NodeProjectWorkflow implements ProjectWorkflowPort {
     return this.#withStore(store => store.finishStageRun(stageRunId, status));
   }
 
+  async #completeCommittedSourceAssetRetry(
+    mapping: SourceAssetCommitMapping,
+    paths: SourceAssetCommitPaths,
+  ): Promise<SourceAssetRecord> {
+    const targetEvidence = await this.#proveFinalSourceAssetTarget(
+      mapping,
+      paths,
+    );
+    if (
+      !mapping.sourceAsset
+      || !sourceAssetRecordMatchesMapping(mapping.sourceAsset, mapping)
+    ) {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'committed_target_unproven',
+      );
+    }
+
+    if (targetEvidence.linkCount === 2) {
+      await unlinkMatchingFileBestEffort(
+        paths.publishingTemporaryPath,
+        targetEvidence.identity,
+      );
+    }
+    return mapping.sourceAsset;
+  }
+
+  async #continueSourceAssetCommit(
+    command: SourceAssetCommitCommand,
+    mapping: SourceAssetCommitMapping,
+    paths: SourceAssetCommitPaths,
+  ): Promise<SourceAssetRecord> {
+    const inputsRoot = join(this.#context.projectDirectory, 'inputs');
+    const target = await observePhysicalFileWithin(
+      inputsRoot,
+      paths.targetPath,
+      mapping.expectedByteLength,
+    );
+    if (target.kind === 'invalid') {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'target_path_invalid',
+        target.cause,
+      );
+    }
+    if (target.kind === 'size-mismatch') {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'target_content_conflict',
+      );
+    }
+    if (target.kind === 'file') {
+      if (!sourceAssetEvidenceMatches(target.evidence, mapping)) {
+        return this.#failSourceAssetCommitRecovery(
+          mapping,
+          'target_content_conflict',
+        );
+      }
+      return this.#finalizeSourceAssetCommit(command, mapping, paths);
+    }
+
+    const publishingTemporary = await observePhysicalFileWithin(
+      inputsRoot,
+      paths.publishingTemporaryPath,
+      mapping.expectedByteLength,
+    );
+    if (publishingTemporary.kind === 'invalid') {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'publishing_temporary_path_invalid',
+        publishingTemporary.cause,
+      );
+    }
+    if (publishingTemporary.kind === 'size-mismatch') {
+      return this.#failConcurrentSourceAssetCommit(
+        command,
+        mapping,
+        paths,
+        'publishing_temporary_content_conflict',
+      );
+    }
+    if (publishingTemporary.kind === 'file') {
+      if (!sourceAssetEvidenceMatches(publishingTemporary.evidence, mapping)) {
+        return this.#failConcurrentSourceAssetCommit(
+          command,
+          mapping,
+          paths,
+          'publishing_temporary_content_conflict',
+        );
+      }
+      return this.#publishAndFinalizeSourceAsset(
+        command,
+        mapping,
+        paths,
+        publishingTemporary.evidence,
+      );
+    }
+
+    const sourcePath = sourceAssetTemporaryAbsolutePath(
+      this.#context.projectDirectory,
+      command,
+    );
+    const source = await observePhysicalFileWithin(
+      join(this.#context.projectDirectory, 'tmp'),
+      sourcePath,
+      mapping.expectedByteLength,
+    );
+    if (
+      source.kind !== 'file'
+      || !sourceAssetEvidenceMatches(source.evidence, mapping)
+    ) {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        source.kind === 'invalid'
+          ? 'temporary_source_path_invalid'
+          : source.kind === 'missing'
+            ? 'commit_evidence_missing'
+            : 'temporary_source_content_conflict',
+        source.kind === 'invalid' ? source.cause : undefined,
+      );
+    }
+
+    await this.#checkpointSourceAssetCommit(
+      'before-inputs-write',
+      mapping,
+      paths,
+    );
+    await assertActiveProjectWriteSession(this.#context);
+    try {
+      await ensureSourceAssetPublishingDirectory(
+        this.#context.projectDirectory,
+        mapping,
+        paths,
+      );
+    } catch (error) {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'publishing_directory_invalid',
+        error,
+      );
+    }
+
+    const concurrentTarget = await observePhysicalFileWithin(
+      inputsRoot,
+      paths.targetPath,
+      mapping.expectedByteLength,
+    );
+    if (concurrentTarget.kind === 'file') {
+      if (!sourceAssetEvidenceMatches(concurrentTarget.evidence, mapping)) {
+        return this.#failSourceAssetCommitRecovery(
+          mapping,
+          'target_content_conflict',
+        );
+      }
+      return this.#finalizeSourceAssetCommit(command, mapping, paths);
+    }
+    if (concurrentTarget.kind === 'invalid') {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'target_path_invalid',
+        concurrentTarget.cause,
+      );
+    }
+    if (concurrentTarget.kind === 'size-mismatch') {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'target_content_conflict',
+      );
+    }
+
+    const concurrentTemporary = await observePhysicalFileWithin(
+      inputsRoot,
+      paths.publishingTemporaryPath,
+      mapping.expectedByteLength,
+    );
+    if (concurrentTemporary.kind === 'file') {
+      if (!sourceAssetEvidenceMatches(concurrentTemporary.evidence, mapping)) {
+        return this.#failConcurrentSourceAssetCommit(
+          command,
+          mapping,
+          paths,
+          'publishing_temporary_content_conflict',
+        );
+      }
+      return this.#publishAndFinalizeSourceAsset(
+        command,
+        mapping,
+        paths,
+        concurrentTemporary.evidence,
+      );
+    }
+    if (concurrentTemporary.kind === 'invalid') {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'publishing_temporary_path_invalid',
+        concurrentTemporary.cause,
+      );
+    }
+    if (concurrentTemporary.kind === 'size-mismatch') {
+      return this.#failConcurrentSourceAssetCommit(
+        command,
+        mapping,
+        paths,
+        'publishing_temporary_content_conflict',
+      );
+    }
+
+    let copyResult: SourceAssetCopyResult;
+    await assertActiveProjectWriteSession(this.#context);
+    try {
+      copyResult = await copyPhysicalFileExclusive(
+        join(this.#context.projectDirectory, 'tmp'),
+        sourcePath,
+        inputsRoot,
+        paths.publishingTemporaryPath,
+        mapping.expectedByteLength,
+      );
+    } catch (error) {
+      if (
+        isFileSystemError(error, 'EEXIST')
+        || isFileSystemError(error, 'ENOENT')
+      ) {
+        return this.#failConcurrentSourceAssetCommit(
+          command,
+          mapping,
+          paths,
+          'source_copy_raced',
+          error,
+        );
+      }
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'source_copy_failed',
+        error,
+      );
+    }
+    if (!sourceAssetEvidenceMatches(copyResult.publishingEvidence, mapping)) {
+      await unlinkMatchingFileBestEffort(
+        paths.publishingTemporaryPath,
+        copyResult.publishingEvidence.identity,
+      );
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'temporary_source_changed_after_reservation',
+      );
+    }
+
+    await this.#checkpointSourceAssetCommit(
+      'publishing-temporary-ready',
+      mapping,
+      paths,
+    );
+    return this.#publishAndFinalizeSourceAsset(
+      command,
+      mapping,
+      paths,
+      copyResult.publishingEvidence,
+      copyResult.sourceIdentity,
+    );
+  }
+
+  async #failConcurrentSourceAssetCommit(
+    command: SourceAssetCommitCommand,
+    mapping: SourceAssetCommitMapping,
+    paths: SourceAssetCommitPaths,
+    detail: string,
+    cause?: unknown,
+  ): Promise<SourceAssetRecord> {
+    const recovery = await this.#markSourceAssetCommitRecovery(mapping);
+    const inputsRoot = join(this.#context.projectDirectory, 'inputs');
+    const target = await observePhysicalFileWithin(
+      inputsRoot,
+      paths.targetPath,
+      mapping.expectedByteLength,
+    );
+    if (
+      target.kind === 'file'
+      && sourceAssetEvidenceMatches(target.evidence, recovery)
+    ) {
+      return this.#finalizeSourceAssetCommit(command, recovery, paths);
+    }
+    const publishingTemporary = await observePhysicalFileWithin(
+      inputsRoot,
+      paths.publishingTemporaryPath,
+      mapping.expectedByteLength,
+    );
+    if (
+      publishingTemporary.kind === 'file'
+      && publishingTemporary.evidence.linkCount === 1
+      && sourceAssetEvidenceMatches(publishingTemporary.evidence, recovery)
+    ) {
+      return this.#publishAndFinalizeSourceAsset(
+        command,
+        recovery,
+        paths,
+        publishingTemporary.evidence,
+      );
+    }
+    throw sourceAssetCommitRecoveryError(
+      recovery,
+      detail,
+      cause,
+    );
+  }
+
+  async #publishAndFinalizeSourceAsset(
+    command: SourceAssetCommitCommand,
+    mapping: SourceAssetCommitMapping,
+    paths: SourceAssetCommitPaths,
+    publishingTemporaryEvidence: PhysicalFileEvidence,
+    temporarySourceIdentity?: PhysicalFileIdentity,
+  ): Promise<SourceAssetRecord> {
+    await assertActiveProjectWriteSession(this.#context);
+    try {
+      const inputsRoot = join(this.#context.projectDirectory, 'inputs');
+      await assertPhysicalDirectoryWithin(
+        inputsRoot,
+        paths.publishingDirectory,
+      );
+      await assertPhysicalDirectoryWithin(inputsRoot, paths.targetDirectory);
+    } catch (error) {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'publishing_directory_invalid',
+        error,
+      );
+    }
+    const currentPublishingTemporary = await observePhysicalFileWithin(
+      join(this.#context.projectDirectory, 'inputs'),
+      paths.publishingTemporaryPath,
+      mapping.expectedByteLength,
+    );
+    if (
+      currentPublishingTemporary.kind !== 'file'
+    ) {
+      if (currentPublishingTemporary.kind === 'missing') {
+        return this.#failConcurrentSourceAssetCommit(
+          command,
+          mapping,
+          paths,
+          'publishing_temporary_disappeared_before_publish',
+        );
+      }
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'publishing_temporary_changed_before_publish',
+        currentPublishingTemporary.kind === 'invalid'
+          ? currentPublishingTemporary.cause
+          : undefined,
+      );
+    }
+    if (
+      !sourceAssetEvidenceMatches(currentPublishingTemporary.evidence, mapping)
+      || !physicalFileIdentitiesEqual(
+        currentPublishingTemporary.evidence.identity,
+        publishingTemporaryEvidence.identity,
+      )
+    ) {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'publishing_temporary_identity_conflict',
+      );
+    }
+    if (currentPublishingTemporary.evidence.linkCount === 2) {
+      const linkedTarget = await observePhysicalFileWithin(
+        join(this.#context.projectDirectory, 'inputs'),
+        paths.targetPath,
+        mapping.expectedByteLength,
+      );
+      if (
+        linkedTarget.kind === 'file'
+        && linkedTarget.evidence.linkCount === 2
+        && sourceAssetEvidenceMatches(linkedTarget.evidence, mapping)
+        && physicalFileIdentitiesEqual(
+          linkedTarget.evidence.identity,
+          currentPublishingTemporary.evidence.identity,
+        )
+      ) {
+        return this.#finalizeSourceAssetCommit(
+          command,
+          mapping,
+          paths,
+          temporarySourceIdentity,
+        );
+      }
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'publishing_temporary_link_identity_conflict',
+      );
+    }
+    if (currentPublishingTemporary.evidence.linkCount !== 1) {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'publishing_temporary_link_count_invalid',
+      );
+    }
+    try {
+      await syncPhysicalFileIdentity(
+        paths.publishingTemporaryPath,
+        publishingTemporaryEvidence.identity,
+      );
+    } catch (error) {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'publishing_temporary_sync_failed',
+        error,
+      );
+    }
+
+    let published = false;
+    await assertActiveProjectWriteSession(this.#context);
+    try {
+      await link(paths.publishingTemporaryPath, paths.targetPath);
+      published = true;
+    } catch (error) {
+      const target = await observePhysicalFileWithin(
+        join(this.#context.projectDirectory, 'inputs'),
+        paths.targetPath,
+        mapping.expectedByteLength,
+      );
+      if (
+        target.kind === 'file'
+        && sourceAssetEvidenceMatches(target.evidence, mapping)
+      ) {
+        return this.#finalizeSourceAssetCommit(
+          command,
+          mapping,
+          paths,
+          temporarySourceIdentity,
+        );
+      }
+      if (isFileSystemError(error, 'EEXIST')) {
+        return this.#failSourceAssetCommitRecovery(
+          mapping,
+          'target_content_conflict',
+          target.kind === 'invalid' ? target.cause : error,
+        );
+      }
+      if (isFileSystemError(error, 'ENOENT')) {
+        return this.#failConcurrentSourceAssetCommit(
+          command,
+          mapping,
+          paths,
+          'source_publish_raced',
+          error,
+        );
+      }
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'source_publish_failed',
+        error,
+      );
+    }
+
+    if (published) {
+      const publishedTarget = await observePhysicalFileWithin(
+        join(this.#context.projectDirectory, 'inputs'),
+        paths.targetPath,
+        mapping.expectedByteLength,
+      );
+      if (
+        publishedTarget.kind !== 'file'
+        || !sourceAssetEvidenceMatches(publishedTarget.evidence, mapping)
+        || !physicalFileIdentitiesEqual(
+          publishedTarget.evidence.identity,
+          publishingTemporaryEvidence.identity,
+        )
+        || ![1, 2].includes(publishedTarget.evidence.linkCount)
+      ) {
+        return this.#failSourceAssetCommitRecovery(
+          mapping,
+          'published_target_identity_unproven',
+          publishedTarget.kind === 'invalid'
+            ? publishedTarget.cause
+            : undefined,
+        );
+      }
+    }
+
+    if (published) {
+      await this.#checkpointSourceAssetCommit(
+        'published',
+        mapping,
+        paths,
+      );
+    }
+    return this.#finalizeSourceAssetCommit(
+      command,
+      mapping,
+      paths,
+      temporarySourceIdentity,
+    );
+  }
+
+  async #finalizeSourceAssetCommit(
+    command: SourceAssetCommitCommand,
+    mapping: SourceAssetCommitMapping,
+    paths: SourceAssetCommitPaths,
+    temporarySourceIdentity?: PhysicalFileIdentity,
+  ): Promise<SourceAssetRecord> {
+    let targetEvidence = await this.#proveFinalSourceAssetTarget(
+      mapping,
+      paths,
+    );
+
+    const record = parseSourceAssetRecord({
+      sourceAssetId: mapping.sourceAssetId,
+      sourceType: mapping.sourceType,
+      originalName: mapping.originalName,
+      contentHash: mapping.expectedContentHash,
+      relativePath: mapping.targetRelativePath,
+      createdAt: mapping.createdAt,
+      createdBy: mapping.createdBy,
+    });
+    let finalized: SourceAssetRecord;
+    try {
+      finalized = await this.#withActiveSourceAssetStore(store =>
+        store.finalizeSourceAssetCommit(
+          mapping.idempotencyKey,
+          mapping.expectedByteLength,
+          record,
+        ),
+      );
+      await this.#checkpointSourceAssetCommit(
+        'finalize-result-unknown',
+        mapping,
+        paths,
+      );
+    } catch (error) {
+      const observed = await this.#withActiveSourceAssetStore(store =>
+        store.getSourceAssetCommit(mapping.idempotencyKey),
+      );
+      if (
+        observed?.status === 'committed'
+        && observed.sourceAsset
+        && sourceAssetRecordMatchesMapping(observed.sourceAsset, observed)
+      ) {
+        await this.#proveFinalSourceAssetTarget(observed, paths);
+        finalized = observed.sourceAsset;
+      } else {
+        return this.#failSourceAssetCommitRecovery(
+          observed ?? mapping,
+          'source_asset_finalize_failed',
+          error,
+        );
+      }
+    }
+    await this.#checkpointSourceAssetCommit(
+      'finalized',
+      mapping,
+      paths,
+    );
+    targetEvidence = await this.#proveFinalSourceAssetTarget(mapping, paths);
+    if (temporarySourceIdentity) {
+      await cleanupCommandTemporarySourceBestEffort(
+        this.#context.projectDirectory,
+        command,
+        temporarySourceIdentity,
+      );
+    }
+    if (targetEvidence.linkCount === 2) {
+      await unlinkMatchingFileBestEffort(
+        paths.publishingTemporaryPath,
+        targetEvidence.identity,
+      );
+    }
+    return finalized;
+  }
+
+  async #proveFinalSourceAssetTarget(
+    mapping: SourceAssetCommitMapping,
+    paths: SourceAssetCommitPaths,
+  ): Promise<PhysicalFileEvidence> {
+    const inputsRoot = join(this.#context.projectDirectory, 'inputs');
+    const target = await observePhysicalFileWithin(
+      inputsRoot,
+      paths.targetPath,
+      mapping.expectedByteLength,
+    );
+    if (
+      target.kind !== 'file'
+      || !sourceAssetEvidenceMatches(target.evidence, mapping)
+    ) {
+      return this.#failSourceAssetCommitRecovery(
+        mapping,
+        'target_unproven_before_finalize',
+        target.kind === 'invalid' ? target.cause : undefined,
+      );
+    }
+    if (target.evidence.linkCount === 1)
+      return target.evidence;
+
+    const publishingTemporary = await observePhysicalFileWithin(
+      inputsRoot,
+      paths.publishingTemporaryPath,
+      mapping.expectedByteLength,
+    );
+    if (
+      target.evidence.linkCount === 2
+      && publishingTemporary.kind === 'file'
+      && publishingTemporary.evidence.linkCount === 2
+      && sourceAssetEvidenceMatches(publishingTemporary.evidence, mapping)
+      && physicalFileIdentitiesEqual(
+        publishingTemporary.evidence.identity,
+        target.evidence.identity,
+      )
+    ) {
+      return target.evidence;
+    }
+
+    const refreshedTarget = await observePhysicalFileWithin(
+      inputsRoot,
+      paths.targetPath,
+      mapping.expectedByteLength,
+    );
+    if (
+      target.evidence.linkCount === 2
+      && refreshedTarget.kind === 'file'
+      && refreshedTarget.evidence.linkCount === 1
+      && sourceAssetEvidenceMatches(refreshedTarget.evidence, mapping)
+      && physicalFileIdentitiesEqual(
+        refreshedTarget.evidence.identity,
+        target.evidence.identity,
+      )
+    ) {
+      return refreshedTarget.evidence;
+    }
+
+    return this.#failSourceAssetCommitRecovery(
+      mapping,
+      'target_link_identity_unproven',
+      publishingTemporary.kind === 'invalid'
+        ? publishingTemporary.cause
+        : undefined,
+    );
+  }
+
+  async #failSourceAssetCommitRecovery(
+    mapping: SourceAssetCommitMapping,
+    detail: string,
+    cause?: unknown,
+  ): Promise<never> {
+    const recovery = await this.#markSourceAssetCommitRecovery(mapping);
+    throw sourceAssetCommitRecoveryError(recovery, detail, cause);
+  }
+
+  async #markSourceAssetCommitRecovery(
+    mapping: SourceAssetCommitMapping,
+  ): Promise<SourceAssetCommitMapping> {
+    let recovery: SourceAssetCommitMapping;
+    try {
+      recovery = await this.#withActiveSourceAssetStore((store) => {
+        const current = store.getSourceAssetCommit(mapping.idempotencyKey);
+        if (!current) {
+          throw new ProjectStateError(
+            'PROJECT_STATE_NOT_FOUND',
+            'The source asset commit reservation no longer exists.',
+          );
+        }
+        if (current.status === 'committed' && mapping.status !== 'committed')
+          return current;
+        return store.markSourceAssetCommitRecoveryRequired(
+          mapping.idempotencyKey,
+          current.recoveryReason ?? SOURCE_ASSET_COMMIT_RECOVERY_REASON,
+        );
+      });
+      if (recovery.status === 'committed' && mapping.status !== 'committed')
+        throw new SourceAssetCommitSupersededByCommitted(recovery);
+    } catch (error) {
+      if (error instanceof SourceAssetCommitSupersededByCommitted)
+        throw error;
+      const observed = await this.#withActiveSourceAssetStore(store =>
+        store.getSourceAssetCommit(mapping.idempotencyKey),
+      );
+      if (observed?.status === 'committed' && mapping.status !== 'committed')
+        throw new SourceAssetCommitSupersededByCommitted(observed);
+      if (observed?.status !== 'recovery_required')
+        throw error;
+      recovery = observed;
+    }
+    return recovery;
+  }
+
+  async #checkpointSourceAssetCommit(
+    checkpoint: SourceAssetCommitCheckpoint,
+    mapping: SourceAssetCommitMapping,
+    paths: SourceAssetCommitPaths,
+  ): Promise<void> {
+    await this.#sourceAssetCommitCheckpoint?.(checkpoint, {
+      idempotencyKey: mapping.idempotencyKey,
+      publishingTemporaryRelativePath:
+        paths.publishingTemporaryRelativePath,
+      sourceAssetId: mapping.sourceAssetId,
+      targetRelativePath: mapping.targetRelativePath,
+    });
+  }
+
   async #withStore<T>(
     operation: (store: NodeProjectStateStore) => Promise<T> | T,
   ): Promise<T> {
@@ -578,6 +1458,628 @@ export class NodeProjectWorkflow implements ProjectWorkflowPort {
       store.close();
     }
   }
+
+  async #withActiveSourceAssetStore<T>(
+    operation: (store: NodeProjectStateStore) => Promise<T> | T,
+  ): Promise<T> {
+    await assertActiveProjectWriteSession(this.#context);
+    return this.#withStore(operation);
+  }
+}
+
+async function assertActiveProjectWriteSession(
+  context: ProjectContext,
+): Promise<void> {
+  try {
+    await assertCanonicalPhysicalDirectory(context.projectDirectory);
+    const lockDirectory = join(context.projectDirectory, 'state/locks');
+    await assertPhysicalDirectoryWithin(
+      context.projectDirectory,
+      lockDirectory,
+    );
+    const lockPath = join(
+      context.projectDirectory,
+      PROJECT_WRITE_LOCK_RELATIVE_PATH,
+    );
+    await assertNoSymbolicPath(lockDirectory, lockPath);
+    const pathEntry = await lstat(lockPath);
+    if (
+      pathEntry.isSymbolicLink()
+      || !pathEntry.isFile()
+      || pathEntry.size > PROJECT_WRITE_LOCK_MAX_BYTES
+    ) {
+      throw new Error('The project write lock is not a supported physical file.');
+    }
+    const handle = await open(
+      lockPath,
+      fileSystemConstants.O_RDONLY | fileSystemConstants.O_NOFOLLOW,
+    );
+    let contents: string;
+    try {
+      const openedEntry = await handle.stat();
+      if (
+        !openedEntry.isFile()
+        || openedEntry.dev !== pathEntry.dev
+        || openedEntry.ino !== pathEntry.ino
+        || openedEntry.size > PROJECT_WRITE_LOCK_MAX_BYTES
+      ) {
+        throw new Error('The project write lock changed while opening.');
+      }
+      contents = await handle.readFile({ encoding: 'utf8' });
+      const finalEntry = await handle.stat();
+      if (
+        finalEntry.dev !== openedEntry.dev
+        || finalEntry.ino !== openedEntry.ino
+        || finalEntry.size !== openedEntry.size
+      ) {
+        throw new Error('The project write lock changed while reading.');
+      }
+    } finally {
+      await handle.close();
+    }
+    const lock = parseProjectWriteLock(JSON.parse(contents));
+    if (
+      lock.projectId !== context.manifest.projectId
+      || lock.projectSessionId !== context.projectSessionId
+    ) {
+      throw new Error('The project write session is no longer active.');
+    }
+  } catch (error) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_CONFLICT',
+      'The source asset commit requires the active project write session.',
+      error,
+    );
+  }
+}
+
+function sourceAssetCommitIntentFromMapping(
+  mapping: SourceAssetCommitMapping,
+): SourceAssetCommitIntent {
+  return {
+    expectedContentHash: mapping.expectedContentHash,
+    expectedByteLength: mapping.expectedByteLength,
+    originalName: mapping.originalName,
+    sourceType: mapping.sourceType,
+    createdBy: mapping.createdBy,
+  };
+}
+
+function sourceAssetCommitRecoveryError(
+  mapping: SourceAssetCommitMapping,
+  detail: string,
+  cause?: unknown,
+): SourceAssetCommitError {
+  return new SourceAssetCommitError(
+    'SOURCE_ASSET_COMMIT_RECOVERY_REQUIRED',
+    `Source asset commit requires recovery: ${mapping.recoveryReason} (${detail}).`,
+    cause,
+  );
+}
+
+function sourceAssetTemporaryAbsolutePath(
+  projectDirectory: string,
+  command: SourceAssetCommitCommand,
+): string {
+  const temporaryRoot = resolve(projectDirectory, 'tmp');
+  const temporaryPath = resolve(
+    projectDirectory,
+    command.temporarySource.relativePath,
+  );
+  if (
+    !isPathWithin(temporaryRoot, temporaryPath)
+    || temporaryPath === temporaryRoot
+  ) {
+    throw new SourceAssetCommitError(
+      'SOURCE_ASSET_COMMIT_COMMAND_INVALID',
+      'The source asset temporary file must remain below project tmp/.',
+    );
+  }
+  return temporaryPath;
+}
+
+function sourceAssetCommitPaths(
+  projectDirectory: string,
+  mapping: SourceAssetCommitMapping,
+): SourceAssetCommitPaths {
+  const expectedTargetRelativePath = posix.join(
+    'inputs',
+    'source-assets',
+    mapping.sourceAssetId,
+    mapping.originalName,
+  );
+  if (mapping.targetRelativePath !== expectedTargetRelativePath) {
+    throw new Error(
+      'The source asset target does not match its deterministic reservation.',
+    );
+  }
+  const publishingTemporaryRelativePath = posix.join(
+    SOURCE_ASSET_PUBLISHING_DIRECTORY_RELATIVE_PATH,
+    `${mapping.sourceAssetId}.tmp`,
+  );
+  const inputsRoot = resolve(projectDirectory, 'inputs');
+  const publishingDirectory = resolve(
+    projectDirectory,
+    SOURCE_ASSET_PUBLISHING_DIRECTORY_RELATIVE_PATH,
+  );
+  const publishingTemporaryPath = resolve(
+    projectDirectory,
+    publishingTemporaryRelativePath,
+  );
+  const targetDirectory = resolve(
+    projectDirectory,
+    posix.dirname(expectedTargetRelativePath),
+  );
+  const targetPath = resolve(projectDirectory, expectedTargetRelativePath);
+  if (
+    !isPathWithin(inputsRoot, publishingDirectory)
+    || !isPathWithin(inputsRoot, publishingTemporaryPath)
+    || !isPathWithin(inputsRoot, targetDirectory)
+    || !isPathWithin(inputsRoot, targetPath)
+  ) {
+    throw new Error('The source asset target escapes project inputs/.');
+  }
+  return {
+    publishingDirectory,
+    publishingTemporaryPath,
+    publishingTemporaryRelativePath,
+    targetDirectory,
+    targetPath,
+  };
+}
+
+function assertInitialSourceAssetTemporaryEvidence(
+  observation: PhysicalFileObservation,
+  command: SourceAssetCommitCommand,
+): asserts observation is Extract<PhysicalFileObservation, { kind: 'file' }> {
+  if (observation.kind === 'size-mismatch') {
+    throw new SourceAssetCommitError(
+      'SOURCE_ASSET_COMMIT_CONTENT_MISMATCH',
+      'The source asset temporary size does not match the expected byte length.',
+    );
+  }
+  if (observation.kind !== 'file') {
+    throw new SourceAssetCommitError(
+      'SOURCE_ASSET_COMMIT_COMMAND_INVALID',
+      'The source asset temporary source must be a physical file below project tmp/.',
+      observation.kind === 'invalid' ? observation.cause : undefined,
+    );
+  }
+  if (!sourceAssetEvidenceMatches(observation.evidence, command)) {
+    throw new SourceAssetCommitError(
+      'SOURCE_ASSET_COMMIT_CONTENT_MISMATCH',
+      'The source asset temporary bytes do not match the expected hash and size.',
+    );
+  }
+}
+
+function sourceAssetEvidenceMatches(
+  evidence: PhysicalFileEvidence,
+  expected: {
+    readonly expectedByteLength: number;
+    readonly expectedContentHash: string;
+  },
+): boolean {
+  return evidence.byteLength === expected.expectedByteLength
+    && evidence.contentHash === expected.expectedContentHash;
+}
+
+function sourceAssetRecordMatchesMapping(
+  record: SourceAssetRecord,
+  mapping: SourceAssetCommitMapping,
+): boolean {
+  return record.sourceAssetId === mapping.sourceAssetId
+    && record.sourceType === mapping.sourceType
+    && record.originalName === mapping.originalName
+    && record.contentHash === mapping.expectedContentHash
+    && record.relativePath === mapping.targetRelativePath
+    && record.createdAt === mapping.createdAt
+    && record.createdBy === mapping.createdBy;
+}
+
+async function observePhysicalFileWithin(
+  root: string,
+  path: string,
+  expectedByteLength?: number,
+): Promise<PhysicalFileObservation> {
+  const resolvedRoot = resolve(root);
+  const resolvedPath = resolve(path);
+  if (!isPathWithin(resolvedRoot, resolvedPath) || resolvedRoot === resolvedPath) {
+    return {
+      kind: 'invalid',
+      cause: new Error('The observed file escapes its required root.'),
+    };
+  }
+
+  try {
+    await assertCanonicalPhysicalDirectory(resolvedRoot);
+    await assertNoSymbolicPath(resolvedRoot, resolvedPath);
+    const canonicalRoot = await realpath(root);
+    const canonicalPath = await realpath(path);
+    if (canonicalRoot !== resolvedRoot)
+      throw new Error('The observed root must be a physical directory.');
+    if (!isPathWithin(canonicalRoot, canonicalPath) || canonicalRoot === canonicalPath) {
+      throw new Error('The observed file escapes its physical root.');
+    }
+
+    const pathEntry = await lstat(path);
+    if (pathEntry.isSymbolicLink() || !pathEntry.isFile())
+      throw new Error('The observed path is not a physical regular file.');
+
+    const handle = await open(
+      path,
+      fileSystemConstants.O_RDONLY | fileSystemConstants.O_NOFOLLOW,
+    );
+    try {
+      const openedEntry = await handle.stat();
+      if (
+        !openedEntry.isFile()
+        || openedEntry.dev !== pathEntry.dev
+        || openedEntry.ino !== pathEntry.ino
+      ) {
+        throw new Error('The observed file changed while it was opened.');
+      }
+      if (
+        expectedByteLength !== undefined
+        && openedEntry.size !== expectedByteLength
+      ) {
+        return {
+          kind: 'size-mismatch',
+          byteLength: openedEntry.size,
+        };
+      }
+      return {
+        kind: 'file',
+        evidence: await readPhysicalFileEvidence(handle, openedEntry),
+      };
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    return isFileSystemError(error, 'ENOENT')
+      ? { kind: 'missing' }
+      : { kind: 'invalid', cause: error };
+  }
+}
+
+async function readPhysicalFileEvidence(
+  handle: Awaited<ReturnType<typeof open>>,
+  openedEntry: Stats,
+): Promise<PhysicalFileEvidence> {
+  const hash = createHash('sha256');
+  const buffer = Buffer.allocUnsafe(SOURCE_ASSET_COPY_BUFFER_BYTES);
+  let byteLength = 0;
+  while (true) {
+    const remaining = openedEntry.size - byteLength;
+    if (remaining === 0)
+      break;
+    const { bytesRead } = await handle.read(
+      buffer,
+      0,
+      Math.min(buffer.length, remaining),
+      byteLength,
+    );
+    if (bytesRead === 0)
+      throw new Error('The physical file ended before its measured size.');
+    hash.update(buffer.subarray(0, bytesRead));
+    byteLength += bytesRead;
+  }
+  const finalEntry = await handle.stat();
+  if (
+    finalEntry.dev !== openedEntry.dev
+    || finalEntry.ino !== openedEntry.ino
+    || finalEntry.size !== byteLength
+  ) {
+    throw new Error('The physical file changed while it was measured.');
+  }
+  return {
+    byteLength,
+    contentHash: hash.digest('hex'),
+    identity: {
+      device: finalEntry.dev,
+      inode: finalEntry.ino,
+    },
+    linkCount: finalEntry.nlink,
+  };
+}
+
+async function copyPhysicalFileExclusive(
+  sourceRoot: string,
+  sourcePath: string,
+  targetRoot: string,
+  targetPath: string,
+  expectedByteLength: number,
+): Promise<SourceAssetCopyResult> {
+  await assertPhysicalDirectoryWithin(sourceRoot, dirname(sourcePath));
+  await assertNoSymbolicPath(resolve(sourceRoot), resolve(sourcePath));
+  const canonicalSourceRoot = await realpath(sourceRoot);
+  const canonicalSourcePath = await realpath(sourcePath);
+  if (
+    canonicalSourceRoot !== resolve(sourceRoot)
+    || !isPathWithin(canonicalSourceRoot, canonicalSourcePath)
+  ) {
+    throw new Error('The source asset temporary source escapes project tmp/.');
+  }
+  await assertPhysicalDirectoryWithin(targetRoot, dirname(targetPath));
+
+  const sourcePathEntry = await lstat(sourcePath);
+  if (sourcePathEntry.isSymbolicLink() || !sourcePathEntry.isFile())
+    throw new Error('The source asset temporary source is not a regular file.');
+
+  const source = await open(
+    sourcePath,
+    fileSystemConstants.O_RDONLY | fileSystemConstants.O_NOFOLLOW,
+  );
+  let target: Awaited<ReturnType<typeof open>> | undefined;
+  let targetIdentity: PhysicalFileIdentity | undefined;
+  try {
+    const sourceEntry = await source.stat();
+    if (
+      !sourceEntry.isFile()
+      || sourceEntry.dev !== sourcePathEntry.dev
+      || sourceEntry.ino !== sourcePathEntry.ino
+    ) {
+      throw new Error('The source asset temporary source changed before copy.');
+    }
+    if (sourceEntry.size !== expectedByteLength)
+      throw new Error('The source asset temporary source size changed before copy.');
+
+    target = await open(targetPath, 'wx', 0o600);
+    const targetEntry = await target.stat();
+    targetIdentity = {
+      device: targetEntry.dev,
+      inode: targetEntry.ino,
+    };
+    const hash = createHash('sha256');
+    const buffer = Buffer.allocUnsafe(SOURCE_ASSET_COPY_BUFFER_BYTES);
+    let byteLength = 0;
+    while (byteLength < sourceEntry.size) {
+      const remaining = sourceEntry.size - byteLength;
+      const { bytesRead } = await source.read(
+        buffer,
+        0,
+        Math.min(buffer.length, remaining),
+        byteLength,
+      );
+      if (bytesRead === 0)
+        throw new Error('The source asset ended before its measured size.');
+      hash.update(buffer.subarray(0, bytesRead));
+      let written = 0;
+      while (written < bytesRead) {
+        const result = await target.write(
+          buffer,
+          written,
+          bytesRead - written,
+          byteLength + written,
+        );
+        if (result.bytesWritten === 0)
+          throw new Error('The source asset copy made no forward progress.');
+        written += result.bytesWritten;
+      }
+      byteLength += bytesRead;
+    }
+    const finalSourceEntry = await source.stat();
+    if (
+      finalSourceEntry.dev !== sourceEntry.dev
+      || finalSourceEntry.ino !== sourceEntry.ino
+      || finalSourceEntry.size !== byteLength
+    ) {
+      throw new Error('The source asset temporary source changed during copy.');
+    }
+    await target.sync();
+    const finalTargetEntry = await target.stat();
+    if (
+      finalTargetEntry.dev !== targetEntry.dev
+      || finalTargetEntry.ino !== targetEntry.ino
+      || finalTargetEntry.size !== byteLength
+    ) {
+      throw new Error('The source asset publishing temporary changed during copy.');
+    }
+    await target.close();
+    target = undefined;
+    return {
+      publishingEvidence: {
+        byteLength,
+        contentHash: hash.digest('hex'),
+        identity: targetIdentity,
+        linkCount: finalTargetEntry.nlink,
+      },
+      sourceIdentity: {
+        device: finalSourceEntry.dev,
+        inode: finalSourceEntry.ino,
+      },
+    };
+  } catch (error) {
+    await target?.close().catch(() => {});
+    target = undefined;
+    if (targetIdentity)
+      await unlinkMatchingFileBestEffort(targetPath, targetIdentity);
+    throw error;
+  } finally {
+    await target?.close().catch(() => {});
+    await source.close().catch(() => {});
+  }
+}
+
+async function ensureSourceAssetPublishingDirectory(
+  projectDirectory: string,
+  mapping: SourceAssetCommitMapping,
+  paths: SourceAssetCommitPaths,
+): Promise<void> {
+  const inputsRoot = join(projectDirectory, 'inputs');
+  const sourceAssetsRoot = join(inputsRoot, 'source-assets');
+  const targetDirectory = join(sourceAssetsRoot, mapping.sourceAssetId);
+  const publishingDirectory = join(
+    projectDirectory,
+    SOURCE_ASSET_PUBLISHING_DIRECTORY_RELATIVE_PATH,
+  );
+  if (
+    targetDirectory !== paths.targetDirectory
+    || publishingDirectory !== paths.publishingDirectory
+  ) {
+    throw new Error('The source asset publishing paths are not deterministic.');
+  }
+
+  await assertCanonicalPhysicalDirectory(projectDirectory);
+  await assertPhysicalDirectoryWithin(projectDirectory, inputsRoot);
+  await ensurePhysicalChildDirectory(inputsRoot, sourceAssetsRoot);
+  await ensurePhysicalChildDirectory(sourceAssetsRoot, targetDirectory);
+  await ensurePhysicalChildDirectory(inputsRoot, publishingDirectory);
+}
+
+async function ensurePhysicalChildDirectory(
+  root: string,
+  path: string,
+): Promise<void> {
+  if (!isPathWithin(root, path) || root === path)
+    throw new Error('The source asset directory escapes its physical root.');
+  await assertCanonicalPhysicalDirectory(root);
+  try {
+    await mkdir(path, { mode: 0o700 });
+  } catch (error) {
+    if (!isFileSystemError(error, 'EEXIST'))
+      throw error;
+  }
+  await assertPhysicalDirectory(path);
+  const canonicalRoot = await realpath(root);
+  const canonicalPath = await realpath(path);
+  if (!isPathWithin(canonicalRoot, canonicalPath) || canonicalRoot === canonicalPath)
+    throw new Error('The source asset directory escapes its physical root.');
+}
+
+async function assertPhysicalDirectory(path: string): Promise<void> {
+  const entry = await lstat(path);
+  if (entry.isSymbolicLink() || !entry.isDirectory())
+    throw new Error('The source asset directory must be a physical directory.');
+}
+
+async function assertCanonicalPhysicalDirectory(path: string): Promise<void> {
+  const resolvedPath = resolve(path);
+  await assertPhysicalDirectory(resolvedPath);
+  if (await realpath(resolvedPath) !== resolvedPath)
+    throw new Error('The source asset directory must have physical ancestors.');
+}
+
+async function assertPhysicalDirectoryWithin(
+  root: string,
+  path: string,
+): Promise<void> {
+  const resolvedRoot = resolve(root);
+  const resolvedPath = resolve(path);
+  if (!isPathWithin(resolvedRoot, resolvedPath))
+    throw new Error('The source asset directory escapes its required root.');
+  await assertNoSymbolicPath(resolvedRoot, resolvedPath);
+  const canonicalRoot = await realpath(resolvedRoot);
+  const canonicalPath = await realpath(resolvedPath);
+  if (
+    canonicalRoot !== resolvedRoot
+    || !isPathWithin(canonicalRoot, canonicalPath)
+  ) {
+    throw new Error('The source asset directory escapes its physical root.');
+  }
+  await assertPhysicalDirectory(resolvedPath);
+}
+
+async function cleanupCommandTemporarySourceBestEffort(
+  projectDirectory: string,
+  command: SourceAssetCommitCommand,
+  expectedIdentity: PhysicalFileIdentity,
+): Promise<void> {
+  try {
+    const root = join(projectDirectory, 'tmp');
+    const path = sourceAssetTemporaryAbsolutePath(projectDirectory, command);
+    const observation = await observePhysicalFileWithin(
+      root,
+      path,
+      command.expectedByteLength,
+    );
+    if (
+      observation.kind === 'file'
+      && sourceAssetEvidenceMatches(observation.evidence, command)
+      && physicalFileIdentitiesEqual(
+        observation.evidence.identity,
+        expectedIdentity,
+      )
+    ) {
+      await unlinkMatchingFileBestEffort(path, observation.evidence.identity);
+    }
+  } catch {
+    // A committed source asset does not depend on cleanup of its temporary input.
+  }
+}
+
+async function syncPhysicalFileIdentity(
+  path: string,
+  expectedIdentity: PhysicalFileIdentity,
+): Promise<void> {
+  const pathEntry = await lstat(path);
+  if (
+    pathEntry.isSymbolicLink()
+    || !pathEntry.isFile()
+    || pathEntry.nlink !== 1
+    || !physicalFileIdentitiesEqual(
+      { device: pathEntry.dev, inode: pathEntry.ino },
+      expectedIdentity,
+    )
+  ) {
+    throw new Error('The publishing temporary identity changed before sync.');
+  }
+  const handle = await open(
+    path,
+    fileSystemConstants.O_RDONLY | fileSystemConstants.O_NOFOLLOW,
+  );
+  try {
+    const openedEntry = await handle.stat();
+    if (
+      !openedEntry.isFile()
+      || openedEntry.nlink !== 1
+      || !physicalFileIdentitiesEqual(
+        { device: openedEntry.dev, inode: openedEntry.ino },
+        expectedIdentity,
+      )
+    ) {
+      throw new Error('The publishing temporary changed while opening for sync.');
+    }
+    await handle.sync();
+    const finalEntry = await handle.stat();
+    if (
+      finalEntry.nlink !== 1
+      || !physicalFileIdentitiesEqual(
+        { device: finalEntry.dev, inode: finalEntry.ino },
+        expectedIdentity,
+      )
+    ) {
+      throw new Error('The publishing temporary changed while syncing.');
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function unlinkMatchingFileBestEffort(
+  path: string,
+  identity: PhysicalFileIdentity,
+): Promise<void> {
+  try {
+    const entry = await lstat(path);
+    if (
+      !entry.isSymbolicLink()
+      && entry.isFile()
+      && entry.dev === identity.device
+      && entry.ino === identity.inode
+    ) {
+      await unlink(path);
+    }
+  } catch {
+    // Cleanup cannot change the already-proven commit result.
+  }
+}
+
+function physicalFileIdentitiesEqual(
+  left: PhysicalFileIdentity,
+  right: PhysicalFileIdentity,
+): boolean {
+  return left.device === right.device && left.inode === right.inode;
 }
 
 function revisionDocumentMatches(
@@ -689,6 +2191,9 @@ async function assertNoSymbolicPath(
   root: string,
   path: string,
 ): Promise<void> {
+  const rootEntry = await lstat(root);
+  if (rootEntry.isSymbolicLink() || !rootEntry.isDirectory())
+    throw new Error('Workflow path roots must be physical directories.');
   let current = root;
   const child = relative(root, path);
   for (const component of child.split(sep).filter(Boolean)) {

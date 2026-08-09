@@ -11,6 +11,8 @@ export {
 export {
   NodeProjectWorkflow,
   type NodeProjectWorkflowOptions,
+  type SourceAssetCommitCheckpoint,
+  type SourceAssetCommitCheckpointContext,
 } from './nodeProjectWorkflow.js';
 export {
   type CreateProjectWorkspaceCommand,
