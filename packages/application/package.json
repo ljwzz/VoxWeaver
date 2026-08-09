@@ -21,6 +21,9 @@
   },
   "dependencies": {
     "@voxweaver/contracts": "workspace:*",
+    "@voxweaver/novel-domain": "workspace:*",
+    "@voxweaver/novel-import": "workspace:*",
+    "@voxweaver/text-pipeline": "workspace:*",
     "@voxweaver/workflow-core": "workspace:*"
   }
 }

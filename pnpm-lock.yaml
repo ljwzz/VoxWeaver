@@ -92,6 +92,15 @@ importers:
       '@voxweaver/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@voxweaver/novel-domain':
+        specifier: workspace:*
+        version: link:../novel-domain
+      '@voxweaver/novel-import':
+        specifier: workspace:*
+        version: link:../novel-import
+      '@voxweaver/text-pipeline':
+        specifier: workspace:*
+        version: link:../text-pipeline
       '@voxweaver/workflow-core':
         specifier: workspace:*
         version: link:../workflow-core
@@ -107,6 +116,21 @@ importers:
         specifier: 3.0.1
         version: 3.0.1(ajv@8.17.1)
 
+  packages/novel-domain:
+    dependencies:
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/novel-import:
+    dependencies:
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@voxweaver/novel-domain':
+        specifier: workspace:*
+        version: link:../novel-domain
+
   packages/project-workspace:
     dependencies:
       '@voxweaver/contracts':
@@ -115,6 +139,15 @@ importers:
       '@voxweaver/workflow-core':
         specifier: workspace:*
         version: link:../workflow-core
+
+  packages/text-pipeline:
+    dependencies:
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@voxweaver/novel-domain':
+        specifier: workspace:*
+        version: link:../novel-domain
 
   packages/workflow-core:
     dependencies:
@@ -130,9 +163,15 @@ importers:
       '@voxweaver/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@voxweaver/novel-import':
+        specifier: workspace:*
+        version: link:../../packages/novel-import
       '@voxweaver/project-workspace':
         specifier: workspace:*
         version: link:../../packages/project-workspace
+      '@voxweaver/text-pipeline':
+        specifier: workspace:*
+        version: link:../../packages/text-pipeline
 
 packages:
 
