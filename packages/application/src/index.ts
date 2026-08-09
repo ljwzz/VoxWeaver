@@ -17,6 +17,11 @@ export {
   type NovelImportTemporaryArtifactWriterPort,
   type NovelImportWorkflowFactory,
   type NovelImportWorkflowPort,
+  type NovelReimportArtifactStoreFactory,
+  type NovelReimportArtifactStorePort,
+  type NovelReimportRevisionEntry,
+  type ReimportTxtNovelCommand,
+  type ReimportTxtNovelResult,
   type ValidateNovelImportBundleCommand,
   type WriteNovelImportBundleCommand,
 } from './novelImportApplicationService.js';

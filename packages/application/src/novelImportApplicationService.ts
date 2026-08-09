@@ -1,6 +1,7 @@
 /// <reference types="node" />
 
 import type {
+  ArtifactDependency,
   ArtifactRecord,
   ArtifactSelector,
   ChapterCandidateV1,
@@ -9,6 +10,7 @@ import type {
   ImportIssueV1,
   JsonValue,
   NovelImportErrorCode,
+  NovelImportReviewBaselineV1,
   ProjectContext,
   SourceAssetRecord,
   TaskRecord,
@@ -16,7 +18,10 @@ import type {
   TextRevisionRefV1,
   UserSelectedTxtSourceEncoding,
 } from '@voxweaver/contracts';
-import type { DocumentBlockIndexV1 } from '@voxweaver/novel-domain';
+import type {
+  DocumentBlockIndexV1,
+  NovelReimportPlanV1,
+} from '@voxweaver/novel-domain';
 import type {
   NovelSourceAdapter,
   NovelSourceAsset,
@@ -27,6 +32,7 @@ import type {
 } from '@voxweaver/text-pipeline';
 import type {
   EnqueueTaskResult,
+  NovelImportImpactSelectorV1,
   ProjectWorkflowPort,
   SourceAssetCommitPort,
 } from '@voxweaver/workflow-core';
@@ -38,9 +44,13 @@ import { randomUUID } from 'node:crypto';
 import {
   BLOCK_ALIGNMENT_POLICY_VERSION,
   NOVEL_IMPORT_ERROR_CODES,
+  parseTextRevisionRefV1,
   TXT_SOURCE_ENCODINGS,
 } from '@voxweaver/contracts';
-import { DOCUMENT_BLOCK_INDEX_SCHEMA_VERSION } from '@voxweaver/novel-domain';
+import {
+  buildNovelReimportPlanV1,
+  DOCUMENT_BLOCK_INDEX_SCHEMA_VERSION,
+} from '@voxweaver/novel-domain';
 import {
   TXT_IMPORT_PROCESSOR_ID,
   TXT_IMPORT_PROCESSOR_VERSION,
@@ -67,8 +77,10 @@ import {
   normalizeTextV1,
 } from '@voxweaver/text-pipeline';
 import {
+  buildNovelImportImpactSelectorsV1,
   computeInputFingerprint,
   sha256CanonicalJson,
+  SourceAssetCommitError,
 } from '@voxweaver/workflow-core';
 
 import { ProjectApplicationError } from './projectApplicationError.js';
@@ -100,6 +112,10 @@ export interface ImportTxtNovelCommand extends ProjectSessionIdentity {
   readonly createdBy: string;
   readonly source: ImportTxtSourceCommand;
   readonly sourceEncoding?: UserSelectedTxtSourceEncoding;
+}
+
+export interface ReimportTxtNovelCommand extends ImportTxtNovelCommand {
+  readonly baselineRevision: NovelImportReviewBaselineV1;
 }
 
 export type NovelImportWorkflowPort = ProjectWorkflowPort & SourceAssetCommitPort;
@@ -148,6 +164,24 @@ export interface NovelImportTemporaryArtifactValidatorPort {
   ) => Promise<void>;
 }
 
+export interface NovelReimportArtifactStorePort {
+  readonly readBundle: (
+    artifact: ArtifactRecord,
+  ) => Promise<NovelImportBundleV1>;
+  readonly listRevisions: (
+    artifactId: string,
+  ) => Promise<readonly NovelReimportRevisionEntry[]>;
+}
+
+export interface NovelReimportRevisionEntry {
+  readonly artifact: ArtifactRecord;
+  readonly bundle: NovelImportBundleV1;
+}
+
+export type NovelReimportArtifactStoreFactory = (
+  context: ProjectContext,
+) => NovelReimportArtifactStorePort;
+
 export interface NovelImportBundleV1 {
   readonly documentType: 'novel-import-bundle';
   readonly schemaVersion: typeof NOVEL_IMPORT_BUNDLE_SCHEMA_VERSION;
@@ -173,6 +207,12 @@ export interface NovelImportBundleV1 {
     readonly result: NormalizationApplyResultV1;
   };
   readonly dependencySelector: ArtifactSelector;
+  readonly reimport?: {
+    readonly schemaVersion: 1;
+    readonly baselineRevision: NovelImportReviewBaselineV1;
+    readonly plan: NovelReimportPlanV1;
+    readonly impactSelectors: readonly NovelImportImpactSelectorV1[];
+  };
 }
 
 export type ImportTxtNovelResult
@@ -188,8 +228,43 @@ export type ImportTxtNovelResult
     readonly taskId: string;
   };
 
+export type ReimportTxtNovelResult
+  = | {
+    readonly outcome: 'reused-current';
+    readonly reused: true;
+    readonly inputFingerprint: string;
+    readonly artifact: ArtifactRecord;
+    readonly plan: NovelReimportPlanV1;
+    readonly impactSelectors: readonly NovelImportImpactSelectorV1[];
+  }
+  | {
+    readonly outcome: 'reactivated-history';
+    readonly reused: true;
+    readonly inputFingerprint: string;
+    readonly artifact: ArtifactRecord;
+    readonly previousActiveRevisionId: string;
+    readonly plan: NovelReimportPlanV1;
+    readonly impactSelectors: readonly NovelImportImpactSelectorV1[];
+  }
+  | {
+    readonly outcome: 'task-reused';
+    readonly reused: true;
+    readonly inputFingerprint: string;
+    readonly task: TaskRecord;
+  }
+  | {
+    readonly outcome: 'committed';
+    readonly reused: false;
+    readonly inputFingerprint: string;
+    readonly artifact: ArtifactRecord;
+    readonly taskId: string;
+    readonly plan: NovelReimportPlanV1;
+    readonly impactSelectors: readonly NovelImportImpactSelectorV1[];
+  };
+
 export interface NovelImportApplicationServiceOptions {
   readonly createOpaqueId?: () => string;
+  readonly reimportArtifactStoreFactory?: NovelReimportArtifactStoreFactory;
 }
 
 export class NovelImportApplicationError extends Error {
@@ -197,6 +272,7 @@ export class NovelImportApplicationError extends Error {
     readonly code: NovelImportErrorCode,
     readonly detailReason: string,
     message: string,
+    readonly details?: JsonValue,
   ) {
     super(message);
     this.name = 'NovelImportApplicationError';
@@ -209,6 +285,7 @@ export class NovelImportApplicationService {
   readonly #artifactWriter: NovelImportTemporaryArtifactWriterPort;
   readonly #createOpaqueId: () => string;
   readonly #projects: ProjectApplicationService;
+  readonly #reimportArtifactStoreFactory?: NovelReimportArtifactStoreFactory;
   readonly #sourceAssetResolver: NovelImportSourceAssetResolverPort;
   readonly #workflowFactory: NovelImportWorkflowFactory;
 
@@ -228,6 +305,7 @@ export class NovelImportApplicationService {
     this.#artifactWriter = artifactWriter;
     this.#artifactValidator = artifactValidator;
     this.#createOpaqueId = options.createOpaqueId ?? randomUUID;
+    this.#reimportArtifactStoreFactory = options.reimportArtifactStoreFactory;
   }
 
   async importTxt(command: ImportTxtNovelCommand): Promise<ImportTxtNovelResult> {
@@ -271,20 +349,9 @@ export class NovelImportApplicationService {
           const fingerprintParametersHash = sha256CanonicalJson(
             fingerprintParameters,
           );
-          const inputFingerprint = computeInputFingerprint({
-            compatibilityVersion: INPUT_COMPATIBILITY_VERSION,
-            dependencies: [],
-            parameters: fingerprintParameters,
-            processorId: NOVEL_IMPORT_APPLICATION_PROCESSOR_ID,
-            processorVersion: NOVEL_IMPORT_APPLICATION_PROCESSOR_VERSION,
-            ruleVersions: {
-              blockAlignment: BLOCK_ALIGNMENT_POLICY_VERSION,
-              canonical: CANONICAL_RULE_VERSION,
-              chapterConfidence: CHAPTER_CONFIDENCE_FORMULA_VERSION,
-              chapterHeading: CHAPTER_HEADING_RULE_VERSION,
-              normalization: NORMALIZATION_RULE_VERSION,
-            },
-          });
+          const inputFingerprint = createNovelImportInputFingerprint(
+            fingerprintParameters,
+          );
           const outputScope = {
             kind: 'novel-import',
             identifiers: [sourceAsset.sourceAssetId],
@@ -523,6 +590,452 @@ export class NovelImportApplicationService {
       throw error;
     }
   }
+
+  async reimportTxt(
+    command: ReimportTxtNovelCommand,
+  ): Promise<ReimportTxtNovelResult> {
+    try {
+      return await this.#projects.runInActiveProjectSession(
+        {
+          projectId: command.projectId,
+          projectSessionId: command.projectSessionId,
+          requiredAccess: 'write',
+        },
+        async (context) => {
+          const source = validateCommand(command);
+          const baseline = validateReimportBaseline(command?.baselineRevision);
+          let workflow: NovelImportWorkflowPort;
+          let store: NovelReimportArtifactStorePort;
+          try {
+            workflow = this.#workflowFactory(context);
+            assertReimportWorkflowPort(workflow);
+            store = this.#resolveReimportStore(context);
+          } catch (error) {
+            throw normalizeFailure(error, 'reimport-resolution');
+          }
+
+          const baselineArtifact = await loadCurrentReimportBaseline(
+            workflow,
+            baseline,
+          );
+          const baselineBundle = await readReimportBundle(
+            store,
+            baselineArtifact,
+            baseline,
+          );
+
+          const history = await listReimportHistory(
+            store,
+            baselineArtifact,
+          );
+          const historicalSourceEntry = findMatchingReimportSourceIdentity(
+            history,
+            source,
+          );
+          const historicalEntry = findMatchingReimportHistory(
+            history,
+            source,
+            command.sourceEncoding,
+          );
+          let reusable: ArtifactRecord | undefined;
+          let reusableBundle: NovelImportBundleV1 | undefined;
+          let inputFingerprint: string | undefined;
+          let fingerprintParameters: JsonValue | undefined;
+          if (historicalEntry !== undefined) {
+            fingerprintParameters = createFingerprintParameters(
+              historicalEntry.bundle.sourceAsset,
+              source,
+              command.sourceEncoding,
+            );
+            inputFingerprint = createNovelImportInputFingerprint(
+              fingerprintParameters,
+            );
+            try {
+              reusable = await workflow.findReusableRevision(
+                inputFingerprint,
+                NOVEL_IMPORT_APPLICATION_PROCESSOR_ID,
+                baselineArtifact.scope,
+              );
+            } catch (error) {
+              throw normalizeFailure(error, 'reimport-history');
+            }
+          }
+
+          if (reusable !== undefined && inputFingerprint !== undefined) {
+            assertReusableReimportArtifact(
+              reusable,
+              baselineArtifact,
+              inputFingerprint,
+            );
+            reusableBundle = history.find(entry =>
+              entry.artifact.revisionId === reusable?.revisionId)?.bundle
+              ?? await readReimportBundle(store, reusable);
+            const trace = buildReimportTrace(baselineBundle, reusableBundle);
+            if (reusable.revisionId === baselineArtifact.revisionId) {
+              if (trace.impactSelectors.length !== 0) {
+                invalid(
+                  'NOVEL_IMPORT_STRUCTURE_INVALID',
+                  'reused_current_revision_changed',
+                  'The current reusable revision unexpectedly reports a text change.',
+                );
+              }
+              await assertCurrentReimportBaseline(workflow, baseline);
+              return {
+                outcome: 'reused-current',
+                reused: true,
+                inputFingerprint,
+                artifact: baselineArtifact,
+                plan: trace.plan,
+                impactSelectors: trace.impactSelectors,
+              };
+            }
+
+            const changeSelector = requirePersistableReimportSelector(trace);
+            const sourceAsset = await commitReimportSourceAsset(
+              workflow,
+              source,
+              command.createdBy,
+              reusableBundle.sourceAsset,
+            );
+            assertHistoricalReimportSourceAsset(
+              sourceAsset,
+              reusableBundle.sourceAsset,
+              source,
+            );
+            await assertCurrentReimportBaseline(workflow, baseline);
+            let artifact: ArtifactRecord;
+            try {
+              artifact = await workflow.activateArtifactRevision({
+                revisionId: reusable.revisionId,
+                changeSelector,
+              });
+            } catch (error) {
+              throw normalizeFailure(error, 'reimport-activation');
+            }
+            assertReactivatedArtifact(artifact, reusable, baselineArtifact);
+            return {
+              outcome: 'reactivated-history',
+              reused: true,
+              inputFingerprint,
+              artifact,
+              previousActiveRevisionId: baselineArtifact.revisionId,
+              plan: trace.plan,
+              impactSelectors: trace.impactSelectors,
+            };
+          }
+
+          const sourceAsset = await commitReimportSourceAsset(
+            workflow,
+            source,
+            command.createdBy,
+            historicalSourceEntry?.bundle.sourceAsset,
+          );
+          if (historicalSourceEntry === undefined) {
+            assertCommittedSourceAsset(sourceAsset, source, command.createdBy);
+          } else {
+            assertHistoricalReimportSourceAsset(
+              sourceAsset,
+              historicalSourceEntry.bundle.sourceAsset,
+              source,
+            );
+          }
+          fingerprintParameters = createFingerprintParameters(
+            sourceAsset,
+            source,
+            command.sourceEncoding,
+          );
+          const fingerprintParametersHash = sha256CanonicalJson(
+            fingerprintParameters,
+          );
+          inputFingerprint = createNovelImportInputFingerprint(
+            fingerprintParameters,
+          );
+
+          let enqueue: EnqueueTaskResult;
+          try {
+            enqueue = await workflow.enqueueTask({
+              inputFingerprint,
+              outputScope: baselineArtifact.scope,
+              processorId: NOVEL_IMPORT_APPLICATION_PROCESSOR_ID,
+            });
+          } catch (error) {
+            throw normalizeFailure(error, 'task-enqueue');
+          }
+          assertReimportEnqueuedTask(
+            enqueue.task,
+            enqueue.reused,
+            context.manifest.projectId,
+            inputFingerprint,
+            baselineArtifact.scope,
+          );
+          if (enqueue.reused) {
+            await assertCurrentReimportBaseline(workflow, baseline);
+            return {
+              outcome: 'task-reused',
+              reused: true,
+              inputFingerprint,
+              task: enqueue.task,
+            };
+          }
+
+          const task = enqueue.task;
+          let boundary: FailureBoundary = 'task-start';
+          try {
+            await workflow.startTask(task.taskId);
+            boundary = 'adapter-resolution';
+            const adapter = await this.#adapterResolver.resolveAdapter(
+              TXT_SOURCE_ADAPTER_ID,
+            );
+            assertTxtAdapter(adapter);
+
+            boundary = 'source-resolution';
+            const resolvedSource = await this.#sourceAssetResolver.resolveSourceAsset(
+              sourceAsset,
+              source.byteLength,
+            );
+            assertResolvedSource(resolvedSource, sourceAsset, source.byteLength);
+
+            const validationContext = command.sourceEncoding === undefined
+              ? {}
+              : {
+                  userEncoding: {
+                    sourceContentHash: sourceAsset.contentHash,
+                    sourceEncoding: command.sourceEncoding,
+                  },
+                };
+            boundary = 'adapter-processing';
+            const importedNovel = await adapter.extract(resolvedSource, {
+              ...validationContext,
+              createOpaqueId: this.#createOpaqueId,
+            });
+            assertImportedNovel(
+              importedNovel,
+              sourceAsset,
+              source.byteLength,
+              command.sourceEncoding,
+            );
+
+            boundary = 'text-processing';
+            const canonical = canonicalizeRawTextV1({
+              rawTextRevision: importedNovel.rawTextRevision,
+              rawTextParts: importedNovel.orderedBlocks.map(block => block.rawText),
+              canonicalTextRevisionId: this.#createOpaqueId(),
+            });
+            const blockIndex = buildDocumentBlockIndexV1({
+              importedNovel,
+              canonicalText: canonical.canonicalText,
+              canonicalTextRevision: canonical.canonicalTextRevision,
+              rawToCanonicalRangeMap: canonical.rangeMap,
+              previousIndex: baselineBundle.blockIndex,
+            });
+            const chapterCandidates = detectChapterCandidatesV1(blockIndex, {
+              candidateIdFactory: this.#createOpaqueId,
+            });
+            const generatedChapterIndex = buildChapterIndexV1({
+              blockIndex,
+              candidates: chapterCandidates,
+              options: {
+                chapterIdFactory: this.#createOpaqueId,
+                issueIdFactory: this.#createOpaqueId,
+                volumeIdFactory: this.#createOpaqueId,
+              },
+            });
+            const initialPlan = buildNovelReimportPlanV1({
+              previousBlockIndex: baselineBundle.blockIndex,
+              currentBlockIndex: blockIndex,
+              previousChapterIndex: baselineBundle.chapterIndex,
+              currentChapterIndex: generatedChapterIndex,
+            });
+            const chapterIndex = preserveReimportChapterIds(
+              generatedChapterIndex,
+              initialPlan,
+            );
+            const trace = buildReimportTrace(
+              baselineBundle,
+              { blockIndex, chapterIndex },
+            );
+            const changeSelector = requirePersistableReimportSelector(trace);
+            const proposals = discoverNormalizationProposalsV1({
+              canonicalTextRevision: canonical.canonicalTextRevision,
+              canonicalText: canonical.canonicalText,
+              chapterIndex,
+              options: {
+                ...NORMALIZATION_POLICY,
+                proposalIdFactory: this.#createOpaqueId,
+                proposedBy: NORMALIZATION_PROPOSER_ID,
+              },
+            });
+            assertPendingProposals(proposals);
+            const normalization = normalizeTextV1({
+              canonicalTextRevision: canonical.canonicalTextRevision,
+              canonicalText: canonical.canonicalText,
+              proposals,
+              mode: 'apply',
+              selectedProposalIds: [],
+              normalizedTextRevisionId: this.#createOpaqueId(),
+            });
+            if (!normalization.applied) {
+              invalid(
+                'NOVEL_IMPORT_STRUCTURE_INVALID',
+                'normalized_revision_not_materialized',
+                'The independent normalized revision was not materialized.',
+              );
+            }
+
+            const dependencySelector = createDependencySelector(
+              blockIndex,
+              chapterIndex,
+            );
+            const parameters = createReimportArtifactParameters(
+              fingerprintParameters,
+              fingerprintParametersHash,
+              inputFingerprint,
+              dependencySelector,
+              baseline,
+              trace,
+            );
+            const parametersHash = sha256CanonicalJson(parameters);
+            const bundle: NovelImportBundleV1 = {
+              documentType: 'novel-import-bundle',
+              schemaVersion: NOVEL_IMPORT_BUNDLE_SCHEMA_VERSION,
+              sourceAsset,
+              sourceByteLength: source.byteLength,
+              inputFingerprint,
+              fingerprintParametersHash,
+              parameters,
+              parametersHash,
+              selectedEncoding: importedNovel.encodingDecision,
+              importWarnings: importedNovel.warnings,
+              importedNovel,
+              canonical: {
+                text: canonical.canonicalText,
+                revision: canonical.canonicalTextRevision,
+                rawToCanonicalRangeMap: canonical.rangeMap,
+              },
+              blockIndex,
+              chapterCandidates,
+              chapterIndex,
+              normalization: {
+                proposals,
+                result: normalization,
+              },
+              dependencySelector,
+              reimport: {
+                schemaVersion: 1,
+                baselineRevision: baseline,
+                plan: trace.plan,
+                impactSelectors: trace.impactSelectors,
+              },
+            };
+
+            boundary = 'artifact-write';
+            const temporaryArtifact = await this.#artifactWriter.writeBundle({
+              task,
+              bundle,
+            });
+            assertTaskOutputDirectory(temporaryArtifact, task);
+            boundary = 'artifact-validation';
+            await this.#artifactValidator.validateBundle({
+              task,
+              artifact: temporaryArtifact,
+              expectedBundle: bundle,
+            });
+
+            boundary = 'reimport-history';
+            const dependencies = await workflow.listArtifactDependencies(
+              baselineArtifact.revisionId,
+            );
+            await assertCurrentReimportBaseline(workflow, baseline);
+            boundary = 'artifact-commit';
+            const revisionId = this.#createOpaqueId();
+            const reviewRequired = requiresReview(bundle)
+              || trace.plan.reviewStatus === 'pending';
+            const artifact = await workflow.commitArtifactRevision({
+              artifactId: baselineArtifact.artifactId,
+              artifactType: baselineArtifact.artifactType,
+              lineageId: baselineArtifact.lineageId,
+              revisionId,
+              activate: true,
+              changeSelector,
+              createdBy: command.createdBy,
+              dependencies: dependencies.map(toDependencyInput),
+              inputFingerprint,
+              outputDirectory: temporaryArtifact.outputDirectory,
+              parameters,
+              processorId: NOVEL_IMPORT_APPLICATION_PROCESSOR_ID,
+              processorVersion: NOVEL_IMPORT_APPLICATION_PROCESSOR_VERSION,
+              reviewRequired,
+              scope: baselineArtifact.scope,
+              storageKind: baselineArtifact.storageKind,
+              taskId: task.taskId,
+            });
+            assertCommittedReimportArtifact(artifact, {
+              baselineArtifact,
+              createdBy: command.createdBy,
+              inputFingerprint,
+              parametersHash,
+              revisionId,
+              reviewRequired,
+            });
+            return {
+              outcome: 'committed',
+              reused: false,
+              inputFingerprint,
+              artifact,
+              taskId: task.taskId,
+              plan: trace.plan,
+              impactSelectors: trace.impactSelectors,
+            };
+          } catch (error) {
+            const failure = normalizeFailure(error, boundary);
+            try {
+              await workflow.failTask({
+                errorCode: failure.code,
+                errorMessage: failure.message,
+                taskId: task.taskId,
+              });
+            } catch {
+              throw new NovelImportApplicationError(
+                failure.code,
+                'task_failure_persistence_failed',
+                'Novel reimport failed and its task failure could not be persisted.',
+              );
+            }
+            throw failure;
+          }
+        },
+      );
+    } catch (error) {
+      if (
+        error instanceof ProjectApplicationError
+        && error.code === 'PROJECT_SESSION_STALE'
+      ) {
+        throw new NovelImportApplicationError(
+          'NOVEL_IMPORT_STALE_SESSION',
+          'project_session_stale',
+          'The project session is no longer active.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  #resolveReimportStore(
+    context: ProjectContext,
+  ): NovelReimportArtifactStorePort {
+    const store = this.#reimportArtifactStoreFactory?.(context);
+    if (
+      typeof store?.readBundle !== 'function'
+      || typeof store.listRevisions !== 'function'
+    ) {
+      invalid(
+        'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+        'reimport_artifact_store_unavailable',
+        'The active project does not provide immutable novel import bundle reads.',
+      );
+    }
+    return store;
+  }
 }
 
 interface CommittedArtifactExpectation {
@@ -535,6 +1048,25 @@ interface CommittedArtifactExpectation {
   readonly sourceAssetId: string;
 }
 
+interface CommittedReimportArtifactExpectation {
+  readonly baselineArtifact: ArtifactRecord;
+  readonly createdBy: string;
+  readonly inputFingerprint: string;
+  readonly parametersHash: string;
+  readonly revisionId: string;
+  readonly reviewRequired: boolean;
+}
+
+interface ReimportTrace {
+  readonly plan: NovelReimportPlanV1;
+  readonly impactSelectors: readonly NovelImportImpactSelectorV1[];
+}
+
+interface NovelReimportIndexProjection {
+  readonly blockIndex: DocumentBlockIndexV1;
+  readonly chapterIndex: ChapterIndexV1;
+}
+
 type FailureBoundary
   = | 'workflow-resolution'
     | 'source-commit'
@@ -544,6 +1076,9 @@ type FailureBoundary
     | 'source-resolution'
     | 'adapter-processing'
     | 'text-processing'
+    | 'reimport-resolution'
+    | 'reimport-history'
+    | 'reimport-activation'
     | 'artifact-write'
     | 'artifact-validation'
     | 'artifact-commit';
@@ -606,6 +1141,67 @@ function validateCommand(command: ImportTxtNovelCommand): ImportTxtSourceCommand
   return source;
 }
 
+function validateReimportBaseline(
+  value: NovelImportReviewBaselineV1,
+): NovelImportReviewBaselineV1 {
+  if (
+    typeof value?.artifactId !== 'string'
+    || value.artifactId.length === 0
+    || typeof value.artifactRevisionId !== 'string'
+    || value.artifactRevisionId.length === 0
+  ) {
+    invalid(
+      'NOVEL_IMPORT_INVALID_SOURCE',
+      'reimport_baseline_invalid',
+      'Novel reimport requires a complete artifact baseline.',
+    );
+  }
+  let canonicalTextRevision: TextRevisionRefV1;
+  try {
+    canonicalTextRevision = parseTextRevisionRefV1(value.canonicalTextRevision);
+  } catch {
+    invalid(
+      'NOVEL_IMPORT_INVALID_SOURCE',
+      'reimport_baseline_invalid',
+      'Novel reimport requires a valid canonical text revision baseline.',
+    );
+  }
+  if (canonicalTextRevision.textLayer !== 'canonical') {
+    invalid(
+      'NOVEL_IMPORT_INVALID_SOURCE',
+      'reimport_baseline_invalid',
+      'Novel reimport baseline must reference canonical text.',
+    );
+  }
+  return {
+    artifactId: value.artifactId,
+    artifactRevisionId: value.artifactRevisionId,
+    canonicalTextRevision: {
+      ...canonicalTextRevision,
+      textLayer: 'canonical',
+    },
+  };
+}
+
+function createNovelImportInputFingerprint(
+  fingerprintParameters: JsonValue,
+): string {
+  return computeInputFingerprint({
+    compatibilityVersion: INPUT_COMPATIBILITY_VERSION,
+    dependencies: [],
+    parameters: fingerprintParameters,
+    processorId: NOVEL_IMPORT_APPLICATION_PROCESSOR_ID,
+    processorVersion: NOVEL_IMPORT_APPLICATION_PROCESSOR_VERSION,
+    ruleVersions: {
+      blockAlignment: BLOCK_ALIGNMENT_POLICY_VERSION,
+      canonical: CANONICAL_RULE_VERSION,
+      chapterConfidence: CHAPTER_CONFIDENCE_FORMULA_VERSION,
+      chapterHeading: CHAPTER_HEADING_RULE_VERSION,
+      normalization: NORMALIZATION_RULE_VERSION,
+    },
+  });
+}
+
 function createFingerprintParameters(
   sourceAsset: SourceAssetRecord,
   source: ImportTxtSourceCommand,
@@ -665,6 +1261,40 @@ function createArtifactParameters(
   };
 }
 
+function createDependencySelector(
+  blockIndex: DocumentBlockIndexV1,
+  chapterIndex: ChapterIndexV1,
+): ArtifactSelector {
+  const chapterIds = chapterIndex.entries.map(entry => entry.chapterId);
+  return {
+    blockIds: blockIndex.blocks.map(block => block.blockId),
+    ...(chapterIds.length > 0 ? { chapterIds } : {}),
+  };
+}
+
+function createReimportArtifactParameters(
+  fingerprintParameters: JsonValue,
+  fingerprintParametersHash: string,
+  inputFingerprint: string,
+  dependencySelector: ArtifactSelector,
+  baselineRevision: NovelImportReviewBaselineV1,
+  trace: ReimportTrace,
+): JsonValue {
+  return {
+    schemaVersion: 1,
+    fingerprintParameters,
+    fingerprintParametersHash,
+    inputFingerprint,
+    dependencySelector: dependencySelector as unknown as JsonValue,
+    reimport: {
+      schemaVersion: 1,
+      baselineRevision,
+      plan: trace.plan,
+      impactSelectors: trace.impactSelectors,
+    },
+  } as unknown as JsonValue;
+}
+
 function assertWorkflowPort(
   workflow: NovelImportWorkflowPort,
 ): asserts workflow is NovelImportWorkflowPort {
@@ -680,6 +1310,26 @@ function assertWorkflowPort(
         'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
         'workflow_capability_unavailable',
         'The active project workflow does not provide the TXT import capability.',
+      );
+    }
+  }
+}
+
+function assertReimportWorkflowPort(
+  workflow: NovelImportWorkflowPort,
+): asserts workflow is NovelImportWorkflowPort {
+  assertWorkflowPort(workflow);
+  for (const method of [
+    'activateArtifactRevision',
+    'findReusableRevision',
+    'getArtifactRevision',
+    'listArtifactDependencies',
+  ] as const) {
+    if (typeof workflow?.[method] !== 'function') {
+      invalid(
+        'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+        'reimport_workflow_capability_unavailable',
+        'The active project workflow does not provide the reimport capability.',
       );
     }
   }
@@ -762,6 +1412,529 @@ function assertCommittedArtifact(
       'Committed novel import artifact path does not match its revision.',
     );
   }
+}
+
+async function loadCurrentReimportBaseline(
+  workflow: ProjectWorkflowPort,
+  baseline: NovelImportReviewBaselineV1,
+): Promise<ArtifactRecord> {
+  let artifact: ArtifactRecord | undefined;
+  try {
+    artifact = await workflow.getArtifactRevision(
+      baseline.artifactRevisionId,
+    );
+  } catch {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_baseline_read_failed',
+      'The current novel import baseline could not be read.',
+    );
+  }
+  if (
+    artifact === undefined
+    || artifact.artifactId !== baseline.artifactId
+    || artifact.revisionId !== baseline.artifactRevisionId
+    || artifact.artifactType !== NOVEL_IMPORT_BUNDLE_ARTIFACT_TYPE
+    || artifact.processorId !== NOVEL_IMPORT_APPLICATION_PROCESSOR_ID
+    || artifact.executionStatus !== 'succeeded'
+    || artifact.validityStatus !== 'current'
+    || artifact.reviewStatus === 'rejected'
+  ) {
+    invalid(
+      'NOVEL_IMPORT_REVIEW_REQUIRED',
+      'reimport_baseline_not_current',
+      'The requested novel import baseline is not the active reusable revision.',
+    );
+  }
+  return artifact;
+}
+
+async function assertCurrentReimportBaseline(
+  workflow: ProjectWorkflowPort,
+  baseline: NovelImportReviewBaselineV1,
+): Promise<void> {
+  await loadCurrentReimportBaseline(workflow, baseline);
+}
+
+async function readReimportBundle(
+  store: NovelReimportArtifactStorePort,
+  artifact: ArtifactRecord,
+  baseline?: NovelImportReviewBaselineV1,
+): Promise<NovelImportBundleV1> {
+  let bundle: NovelImportBundleV1;
+  try {
+    bundle = await store.readBundle(artifact);
+  } catch {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_bundle_read_failed',
+      'The immutable novel import bundle could not be read.',
+    );
+  }
+  assertReimportBundleProjection(bundle, artifact, baseline);
+  return bundle;
+}
+
+async function listReimportHistory(
+  store: NovelReimportArtifactStorePort,
+  baseline: ArtifactRecord,
+): Promise<readonly NovelReimportRevisionEntry[]> {
+  let history: readonly NovelReimportRevisionEntry[];
+  try {
+    history = await store.listRevisions(baseline.artifactId);
+  } catch {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_history_read_failed',
+      'The immutable novel import revision history could not be read.',
+    );
+  }
+  if (!Array.isArray(history)) {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_history_invalid',
+      'Novel import revision history must be an array.',
+    );
+  }
+  const revisionIds = new Set<string>();
+  let baselineFound = false;
+  for (const entry of history) {
+    if (
+      entry?.artifact?.artifactId !== baseline.artifactId
+      || entry.artifact.artifactType !== baseline.artifactType
+      || entry.artifact.lineageId !== baseline.lineageId
+      || entry.artifact.storageKind !== baseline.storageKind
+      || !sameArtifactScope(entry.artifact.scope, baseline.scope)
+      || revisionIds.has(entry.artifact.revisionId)
+    ) {
+      invalid(
+        'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+        'reimport_history_invalid',
+        'Novel import revision history contains an invalid lineage entry.',
+      );
+    }
+    assertReimportBundleProjection(entry.bundle, entry.artifact);
+    revisionIds.add(entry.artifact.revisionId);
+    baselineFound ||= entry.artifact.revisionId === baseline.revisionId;
+  }
+  if (!baselineFound) {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_history_baseline_missing',
+      'Novel import revision history omits the active baseline.',
+    );
+  }
+  return history;
+}
+
+function findMatchingReimportHistory(
+  history: readonly NovelReimportRevisionEntry[],
+  source: ImportTxtSourceCommand,
+  sourceEncoding: UserSelectedTxtSourceEncoding | undefined,
+): NovelReimportRevisionEntry | undefined {
+  return [...history].reverse().find(entry =>
+    matchesReimportSourceIdentity(entry, source)
+    && entry.artifact.executionStatus === 'succeeded'
+    && entry.artifact.validityStatus !== 'missing'
+    && entry.artifact.reviewStatus !== 'rejected'
+    && (sourceEncoding === undefined
+      ? entry.bundle.selectedEncoding.method !== 'user'
+      : entry.bundle.selectedEncoding.method === 'user'
+        && entry.bundle.selectedEncoding.sourceEncoding === sourceEncoding));
+}
+
+function findMatchingReimportSourceIdentity(
+  history: readonly NovelReimportRevisionEntry[],
+  source: ImportTxtSourceCommand,
+): NovelReimportRevisionEntry | undefined {
+  return [...history].reverse().find(entry =>
+    entry.artifact.executionStatus === 'succeeded'
+    && matchesReimportSourceIdentity(entry, source));
+}
+
+function matchesReimportSourceIdentity(
+  entry: NovelReimportRevisionEntry,
+  source: ImportTxtSourceCommand,
+): boolean {
+  return entry.bundle.sourceAsset.sourceType === SOURCE_TYPE
+    && entry.bundle.sourceAsset.contentHash === source.contentHash
+    && entry.bundle.sourceAsset.originalName === source.originalName
+    && entry.bundle.sourceByteLength === source.byteLength;
+}
+
+async function commitReimportSourceAsset(
+  workflow: SourceAssetCommitPort,
+  source: ImportTxtSourceCommand,
+  createdBy: string,
+  historicalSourceAsset?: SourceAssetRecord,
+): Promise<SourceAssetRecord> {
+  if (historicalSourceAsset !== undefined)
+    assertHistoricalReimportSourceIdentity(historicalSourceAsset, source);
+  try {
+    return await workflow.commitSourceAsset({
+      temporarySource: { relativePath: source.temporaryRelativePath },
+      expectedContentHash: source.contentHash,
+      expectedByteLength: source.byteLength,
+      originalName: source.originalName,
+      sourceType: SOURCE_TYPE,
+      createdBy,
+      idempotencyKey: source.idempotencyKey,
+    });
+  } catch (error) {
+    if (
+      error instanceof SourceAssetCommitError
+      && error.code === 'SOURCE_ASSET_COMMIT_DUPLICATE'
+      && historicalSourceAsset !== undefined
+    ) {
+      return historicalSourceAsset;
+    }
+    throw normalizeFailure(error, 'source-commit');
+  }
+}
+
+function assertHistoricalReimportSourceIdentity(
+  historical: SourceAssetRecord,
+  source: ImportTxtSourceCommand,
+): void {
+  if (
+    historical.sourceType !== SOURCE_TYPE
+    || historical.originalName !== source.originalName
+    || historical.contentHash !== source.contentHash
+    || typeof historical.sourceAssetId !== 'string'
+    || historical.sourceAssetId.length === 0
+  ) {
+    invalid(
+      'NOVEL_IMPORT_INVALID_SOURCE',
+      'reimport_historical_source_mismatch',
+      'The reusable historical SourceAsset does not match the reimport request.',
+    );
+  }
+  assertPortableRelativePath(
+    historical.relativePath,
+    'committed_source_path_invalid',
+    'NOVEL_IMPORT_INVALID_SOURCE',
+  );
+}
+
+function assertHistoricalReimportSourceAsset(
+  sourceAsset: SourceAssetRecord,
+  historical: SourceAssetRecord,
+  source: ImportTxtSourceCommand,
+): void {
+  if (
+    sourceAsset.sourceAssetId !== historical.sourceAssetId
+    || sourceAsset.sourceType !== historical.sourceType
+    || sourceAsset.originalName !== historical.originalName
+    || sourceAsset.contentHash !== historical.contentHash
+    || sourceAsset.contentHash !== source.contentHash
+  ) {
+    invalid(
+      'NOVEL_IMPORT_INVALID_SOURCE',
+      'reimport_historical_source_mismatch',
+      'The committed SourceAsset does not match the reusable historical revision.',
+    );
+  }
+  assertPortableRelativePath(
+    sourceAsset.relativePath,
+    'committed_source_path_invalid',
+    'NOVEL_IMPORT_INVALID_SOURCE',
+  );
+}
+
+function assertReimportBundleProjection(
+  bundle: NovelImportBundleV1,
+  artifact: ArtifactRecord,
+  baseline?: NovelImportReviewBaselineV1,
+): void {
+  let parametersHash: string;
+  try {
+    parametersHash = sha256CanonicalJson(bundle?.parameters);
+  } catch {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_bundle_projection_invalid',
+      'The immutable novel import bundle parameters are invalid.',
+    );
+  }
+  const blockIds = bundle?.blockIndex?.blocks?.map(block => block.blockId);
+  const chapterIds = bundle?.chapterIndex?.entries?.map(entry => entry.chapterId);
+  if (
+    bundle?.documentType !== 'novel-import-bundle'
+    || bundle.schemaVersion !== NOVEL_IMPORT_BUNDLE_SCHEMA_VERSION
+    || bundle.inputFingerprint !== artifact.inputFingerprint
+    || bundle.parametersHash !== artifact.parametersHash
+    || parametersHash !== bundle.parametersHash
+    || bundle.sourceAsset?.sourceAssetId !== bundle.importedNovel?.sourceAssetId
+    || bundle.sourceAsset?.contentHash !== bundle.importedNovel?.sourceHash
+    || bundle.sourceByteLength !== bundle.importedNovel?.sourceByteLength
+    || !sameTextRevision(
+      bundle.canonical?.revision,
+      bundle.blockIndex?.canonicalTextRevision,
+    )
+    || !sameTextRevision(
+      bundle.canonical?.revision,
+      bundle.chapterIndex?.textRevision,
+    )
+    || !sameStringSets(bundle.dependencySelector?.blockIds, blockIds)
+    || !sameStringSets(bundle.dependencySelector?.chapterIds, chapterIds)
+    || (baseline !== undefined
+      && !sameTextRevision(
+        bundle.canonical?.revision,
+        baseline.canonicalTextRevision,
+      ))
+  ) {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_bundle_projection_invalid',
+      'The immutable novel import bundle does not match its artifact revision.',
+    );
+  }
+}
+
+function buildReimportTrace(
+  previous: NovelReimportIndexProjection,
+  current: NovelReimportIndexProjection,
+): ReimportTrace {
+  let plan: NovelReimportPlanV1;
+  try {
+    plan = buildNovelReimportPlanV1({
+      previousBlockIndex: previous.blockIndex,
+      currentBlockIndex: current.blockIndex,
+      previousChapterIndex: previous.chapterIndex,
+      currentChapterIndex: current.chapterIndex,
+    });
+  } catch (error) {
+    invalid(
+      'NOVEL_IMPORT_STRUCTURE_INVALID',
+      isNovelImportError(error)
+        ? readDetailReason(error) ?? 'reimport_plan_invalid'
+        : 'reimport_plan_invalid',
+      'The novel reimport plan could not be built from immutable revisions.',
+    );
+  }
+  return {
+    plan,
+    impactSelectors: buildNovelImportImpactSelectorsV1(plan),
+  };
+}
+
+function preserveReimportChapterIds(
+  chapterIndex: ChapterIndexV1,
+  plan: NovelReimportPlanV1,
+): ChapterIndexV1 {
+  const preservedByCurrent = new Map(
+    plan.preservedChapters.map(item => [
+      item.currentChapterId,
+      item.preservedChapterId,
+    ]),
+  );
+  if (preservedByCurrent.size === 0)
+    return chapterIndex;
+
+  return {
+    ...chapterIndex,
+    entries: chapterIndex.entries.map(entry => ({
+      ...entry,
+      chapterId: preservedByCurrent.get(entry.chapterId) ?? entry.chapterId,
+    })),
+    coverageReport: {
+      ...chapterIndex.coverageReport,
+      segments: chapterIndex.coverageReport.segments.map(segment => (
+        segment.classification === 'chapter'
+          ? {
+              ...segment,
+              chapterId: preservedByCurrent.get(segment.chapterId)
+                ?? segment.chapterId,
+            }
+          : segment
+      )),
+    },
+  };
+}
+
+function requirePersistableReimportSelector(
+  trace: ReimportTrace,
+): ArtifactSelector {
+  const [impact] = trace.impactSelectors;
+  if (
+    trace.impactSelectors.length === 1
+    && impact.changeScope !== 'display'
+  ) {
+    return impact.selector;
+  }
+
+  const detailReason = trace.impactSelectors.length === 0
+    ? 'reimport_empty_change_selector_unavailable'
+    : trace.impactSelectors.some(item => item.changeScope === 'display')
+      ? 'reimport_display_change_scope_unavailable'
+      : 'reimport_multiple_change_scopes_unavailable';
+  throw new NovelImportApplicationError(
+    'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+    detailReason,
+    'The current workflow cannot persist this scoped reimport impact without widening or dropping stale propagation.',
+    {
+      plan: trace.plan,
+      impactSelectors: trace.impactSelectors,
+    } as unknown as JsonValue,
+  );
+}
+
+function assertReusableReimportArtifact(
+  artifact: ArtifactRecord,
+  baseline: ArtifactRecord,
+  inputFingerprint: string,
+): void {
+  if (
+    artifact.artifactId !== baseline.artifactId
+    || artifact.artifactType !== baseline.artifactType
+    || artifact.lineageId !== baseline.lineageId
+    || artifact.storageKind !== baseline.storageKind
+    || !sameArtifactScope(artifact.scope, baseline.scope)
+    || artifact.inputFingerprint !== inputFingerprint
+    || artifact.processorId !== NOVEL_IMPORT_APPLICATION_PROCESSOR_ID
+    || artifact.processorVersion !== NOVEL_IMPORT_APPLICATION_PROCESSOR_VERSION
+    || artifact.executionStatus !== 'succeeded'
+    || (artifact.validityStatus !== 'current'
+      && artifact.validityStatus !== 'superseded')
+    || artifact.reviewStatus === 'rejected'
+  ) {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_reusable_revision_invalid',
+      'The reusable novel import revision does not belong to the active lineage.',
+    );
+  }
+}
+
+function assertReactivatedArtifact(
+  artifact: ArtifactRecord,
+  reusable: ArtifactRecord,
+  baseline: ArtifactRecord,
+): void {
+  if (
+    artifact.artifactId !== reusable.artifactId
+    || artifact.artifactType !== reusable.artifactType
+    || artifact.revisionId !== reusable.revisionId
+    || artifact.lineageId !== reusable.lineageId
+    || !sameArtifactScope(artifact.scope, reusable.scope)
+    || artifact.storageKind !== reusable.storageKind
+    || artifact.contentHash !== reusable.contentHash
+    || artifact.contentPath !== reusable.contentPath
+    || artifact.inputFingerprint !== reusable.inputFingerprint
+    || artifact.parametersHash !== reusable.parametersHash
+    || artifact.processorId !== reusable.processorId
+    || artifact.processorVersion !== reusable.processorVersion
+    || artifact.executionStatus !== reusable.executionStatus
+    || artifact.executionStatus !== 'succeeded'
+    || artifact.validityStatus !== 'current'
+    || artifact.reviewStatus !== reusable.reviewStatus
+    || artifact.reviewStatus === 'rejected'
+    || artifact.createdAt !== reusable.createdAt
+    || artifact.createdBy !== reusable.createdBy
+    || baseline.revisionId === reusable.revisionId
+  ) {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_activation_projection_invalid',
+      'The activated historical revision does not match the reusable artifact.',
+    );
+  }
+}
+
+function assertCommittedReimportArtifact(
+  artifact: ArtifactRecord,
+  expected: CommittedReimportArtifactExpectation,
+): void {
+  const baseline = expected.baselineArtifact;
+  const expectedReviewStatus = expected.reviewRequired ? 'pending' : 'not_required';
+  if (
+    artifact.artifactId !== baseline.artifactId
+    || artifact.artifactType !== baseline.artifactType
+    || artifact.lineageId !== baseline.lineageId
+    || artifact.revisionId !== expected.revisionId
+    || !sameArtifactScope(artifact.scope, baseline.scope)
+    || artifact.storageKind !== baseline.storageKind
+    || artifact.inputFingerprint !== expected.inputFingerprint
+    || artifact.processorId !== NOVEL_IMPORT_APPLICATION_PROCESSOR_ID
+    || artifact.processorVersion !== NOVEL_IMPORT_APPLICATION_PROCESSOR_VERSION
+    || artifact.parametersHash !== expected.parametersHash
+    || artifact.executionStatus !== 'succeeded'
+    || artifact.validityStatus !== 'current'
+    || artifact.reviewStatus !== expectedReviewStatus
+    || artifact.createdBy !== expected.createdBy
+    || !/^[0-9a-f]{64}$/u.test(artifact.contentHash)
+  ) {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_commit_projection_invalid',
+      'The committed reimport revision does not match the active lineage.',
+    );
+  }
+  assertPortableRelativePath(
+    artifact.contentPath,
+    'committed_artifact_path_invalid',
+    'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+  );
+  if (artifact.contentPath !== `artifacts/imported/${expected.revisionId}/content`) {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'committed_artifact_path_invalid',
+      'Committed reimport artifact path does not match its revision.',
+    );
+  }
+}
+
+function assertReimportEnqueuedTask(
+  task: TaskRecord,
+  reused: boolean,
+  projectId: string,
+  inputFingerprint: string,
+  outputScope: ArtifactRecord['scope'],
+): void {
+  const allowedStatus = reused
+    ? ['pending', 'running', 'succeeded']
+    : ['pending'];
+  if (
+    task?.projectId !== projectId
+    || task.processorId !== NOVEL_IMPORT_APPLICATION_PROCESSOR_ID
+    || task.inputFingerprint !== inputFingerprint
+    || !sameArtifactScope(task.outputScope, outputScope)
+    || !allowedStatus.includes(task.executionStatus)
+    || typeof task.taskId !== 'string'
+    || task.taskId.length === 0
+  ) {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'reimport_task_projection_mismatch',
+      'Enqueued novel reimport task does not match the active artifact lineage.',
+    );
+  }
+  assertPortableRelativePath(
+    task.temporaryPath,
+    'enqueued_task_path_invalid',
+    'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+  );
+  if (!task.temporaryPath.startsWith('tmp/')) {
+    invalid(
+      'NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE',
+      'enqueued_task_path_invalid',
+      'Enqueued novel reimport task path must remain below project tmp/.',
+    );
+  }
+}
+
+function toDependencyInput(dependency: ArtifactDependency): {
+  readonly dependencyType: ArtifactDependency['dependencyType'];
+  readonly producerArtifactId: string;
+  readonly producerRevisionId: string;
+  readonly selector?: ArtifactSelector;
+} {
+  return {
+    dependencyType: dependency.dependencyType,
+    producerArtifactId: dependency.producerArtifactId,
+    producerRevisionId: dependency.producerRevisionId,
+    ...(dependency.selector === undefined ? {} : { selector: dependency.selector }),
+  };
 }
 
 function assertEnqueuedTask(
@@ -1012,11 +2185,46 @@ function failureMessage(boundary: FailureBoundary): string {
     'source-resolution': 'Unable to resolve committed TXT content.',
     'adapter-processing': 'TXT adapter processing failed.',
     'text-processing': 'TXT structure processing failed.',
+    'reimport-resolution': 'Unable to resolve novel reimport capabilities.',
+    'reimport-history': 'Unable to read novel import revision history.',
+    'reimport-activation': 'Unable to activate the reusable novel import revision.',
     'artifact-write': 'Unable to write the temporary novel import bundle.',
     'artifact-validation': 'Temporary novel import bundle validation failed.',
     'artifact-commit': 'Unable to commit the validated novel import bundle.',
   };
   return messages[boundary];
+}
+
+function sameTextRevision(
+  left: TextRevisionRefV1 | undefined,
+  right: TextRevisionRefV1 | undefined,
+): boolean {
+  return left !== undefined
+    && right !== undefined
+    && left.textRevisionId === right.textRevisionId
+    && left.textLayer === right.textLayer
+    && left.contentHash === right.contentHash
+    && left.byteLength === right.byteLength;
+}
+
+function sameStringSets(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined,
+): boolean {
+  const leftValues = [...(left ?? [])].sort();
+  const rightValues = [...(right ?? [])].sort();
+  return leftValues.length === rightValues.length
+    && leftValues.every((value, index) => value === rightValues[index]);
+}
+
+function sameArtifactScope(
+  left: ArtifactRecord['scope'] | undefined,
+  right: ArtifactRecord['scope'] | undefined,
+): boolean {
+  return left !== undefined
+    && right !== undefined
+    && left.kind === right.kind
+    && sameStrings(left.identifiers, right.identifiers);
 }
 
 function sameStrings(
