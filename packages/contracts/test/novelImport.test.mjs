@@ -16,6 +16,7 @@ import {
   parseNovelImportDocumentV1,
   parseSceneIndexV1,
 } from '../dist/index.js';
+import { parseProcessingSegmentIndexV1 } from '../dist/novelImport.js';
 
 const SOURCE_ASSET_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_SOURCE_ASSET_ID = '22222222-2222-4222-8222-222222222222';
@@ -29,6 +30,8 @@ const ISSUE_ID = '99999999-9999-4999-8999-999999999999';
 const SCENE_BOUNDARY_CANDIDATE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const SCENE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const SCENE_ID_2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const PROCESSING_SEGMENT_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const PROCESSING_SEGMENT_ID_2 = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
 const RAW_TEXT = '正文';
@@ -287,6 +290,67 @@ function twoChapterSceneIndex(overrides = {}) {
   });
 }
 
+function processingSegmentIndex(overrides = {}) {
+  const firstText = '甲ab';
+  const secondText = '乙cd';
+  return {
+    documentType: 'processing-segment-index',
+    schemaVersion: NOVEL_IMPORT_SCHEMA_VERSION,
+    sourceAssetId: SOURCE_ASSET_ID,
+    sourceHash: RAW_HASH,
+    processorId: 'processing-segmenter',
+    processorVersion: '1.0.0',
+    textRevision: textRevision(CANONICAL_REVISION_ID, 'canonical', 20),
+    configuration: {
+      maxSegmentBytes: 5,
+      contextBeforeBytes: 3,
+      contextAfterBytes: 3,
+      boundaryPolicyVersion: 'm2-processing-segment-boundary-v1',
+    },
+    segments: [
+      {
+        processingSegmentId: PROCESSING_SEGMENT_ID,
+        chapterId: CHAPTER_ID,
+        sceneId: SCENE_ID,
+        order: 0,
+        sourceRange: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 8),
+        text: firstText,
+        contentHash: sha256Utf8(firstText),
+        blockReferences: [{
+          blockId: BLOCK_ID,
+          range: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 8),
+          sourceLocator: sourceLocator(),
+        }],
+        contextAfter: {
+          sourceRange: textRange(CANONICAL_REVISION_ID, 'canonical', 8, 11),
+          text: '丙',
+          contentHash: sha256Utf8('丙'),
+        },
+      },
+      {
+        processingSegmentId: PROCESSING_SEGMENT_ID_2,
+        chapterId: CHAPTER_ID,
+        sceneId: SCENE_ID,
+        order: 1,
+        sourceRange: textRange(CANONICAL_REVISION_ID, 'canonical', 8, 13),
+        text: secondText,
+        contentHash: sha256Utf8(secondText),
+        blockReferences: [{
+          blockId: BLOCK_ID,
+          range: textRange(CANONICAL_REVISION_ID, 'canonical', 8, 13),
+          sourceLocator: sourceLocator(),
+        }],
+        contextBefore: {
+          sourceRange: textRange(CANONICAL_REVISION_ID, 'canonical', 5, 8),
+          text: '丁',
+          contentHash: sha256Utf8('丁'),
+        },
+      },
+    ],
+    ...overrides,
+  };
+}
+
 test('keeps the documented novel schema equal to the runtime schema', () => {
   assert.deepEqual(documentedNovelImportSchema, NOVEL_IMPORT_SCHEMA);
 });
@@ -299,6 +363,7 @@ test('validates all documented aggregate variants with the shared text schema', 
   assert.equal(validate(importedNovel()), true);
   assert.equal(validate(chapterIndex()), true);
   assert.equal(validate(sceneIndex()), true);
+  assert.equal(validate(processingSegmentIndex()), true);
   assert.equal(validate({ ...importedNovel(), schemaVersion: 2 }), false);
   assert.equal(validate({ ...importedNovel(), documentType: 'chapter-index' }), false);
 });
@@ -965,6 +1030,72 @@ test('binds issue block references to the issue Chapter without a candidate', ()
   ];
   for (const value of invalid)
     assert.throws(() => parseSceneIndexV1(value), NovelImportValidationError);
+});
+
+test('accepts a byte-bounded ProcessingSegment aggregate and dispatches it', () => {
+  const value = processingSegmentIndex({ futureField: { retained: true } });
+  assert.equal(parseProcessingSegmentIndexV1(value), value);
+  assert.equal(parseNovelImportDocumentV1(value), value);
+});
+
+test('rejects invalid ProcessingSegment IDs, ranges, text, limits, and trace', () => {
+  const base = processingSegmentIndex();
+  const first = base.segments[0];
+  const second = base.segments[1];
+  const invalid = [
+    processingSegmentIndex({
+      segments: [{ ...first, processingSegmentId: 'segment-1' }, second],
+    }),
+    processingSegmentIndex({
+      segments: [first, { ...second, processingSegmentId: first.processingSegmentId }],
+    }),
+    processingSegmentIndex({
+      segments: [first, {
+        ...second,
+        sourceRange: textRange(CANONICAL_REVISION_ID, 'canonical', 9, 13),
+      }],
+    }),
+    processingSegmentIndex({
+      segments: [{ ...first, text: '字数不符' }, second],
+    }),
+    processingSegmentIndex({
+      configuration: { ...base.configuration, maxSegmentBytes: 4 },
+    }),
+    processingSegmentIndex({
+      segments: [{
+        ...first,
+        blockReferences: [{
+          ...first.blockReferences[0],
+          range: textRange(CANONICAL_REVISION_ID, 'canonical', 4, 8),
+        }],
+      }, second],
+    }),
+    processingSegmentIndex({
+      segments: [{
+        ...first,
+        blockReferences: [{
+          ...first.blockReferences[0],
+          sourceLocator: sourceLocator({ sourceAssetId: OTHER_SOURCE_ASSET_ID }),
+        }],
+      }, second],
+    }),
+    processingSegmentIndex({
+      segments: [{
+        ...first,
+        contextAfter: {
+          ...first.contextAfter,
+          sourceRange: textRange(CANONICAL_REVISION_ID, 'canonical', 9, 12),
+        },
+      }, second],
+    }),
+  ];
+
+  for (const value of invalid) {
+    assert.throws(
+      () => parseProcessingSegmentIndexV1(value),
+      NovelImportValidationError,
+    );
+  }
 });
 
 function sha256Utf8(text) {

@@ -12,6 +12,9 @@
     },
     {
       "$ref": "#/$defs/sceneIndexV1"
+    },
+    {
+      "$ref": "#/$defs/processingSegmentIndexV1"
     }
   ],
   "additionalProperties": true,
@@ -1141,6 +1144,172 @@
             "approved",
             "rejected"
           ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "processingSegmentContextV1": {
+      "type": "object",
+      "required": [
+        "sourceRange",
+        "text",
+        "contentHash"
+      ],
+      "properties": {
+        "sourceRange": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "processingSegmentConfigurationV1": {
+      "type": "object",
+      "required": [
+        "maxSegmentBytes",
+        "contextBeforeBytes",
+        "contextAfterBytes",
+        "boundaryPolicyVersion"
+      ],
+      "properties": {
+        "maxSegmentBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "contextBeforeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "contextAfterBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "boundaryPolicyVersion": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "processingSegmentV1": {
+      "type": "object",
+      "required": [
+        "processingSegmentId",
+        "chapterId",
+        "sceneId",
+        "order",
+        "sourceRange",
+        "text",
+        "contentHash",
+        "blockReferences"
+      ],
+      "properties": {
+        "processingSegmentId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "chapterId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "sceneId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "sceneStartBoundaryCandidateId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sourceRange": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "blockReferences": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sceneBlockReferenceV1"
+          }
+        },
+        "contextBefore": {
+          "$ref": "#/$defs/processingSegmentContextV1"
+        },
+        "contextAfter": {
+          "$ref": "#/$defs/processingSegmentContextV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "processingSegmentIndexV1": {
+      "type": "object",
+      "required": [
+        "documentType",
+        "schemaVersion",
+        "sourceAssetId",
+        "sourceHash",
+        "processorId",
+        "processorVersion",
+        "textRevision",
+        "configuration",
+        "segments"
+      ],
+      "properties": {
+        "documentType": {
+          "const": "processing-segment-index"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "sourceAssetId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "processorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "processorVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "textRevision": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRevisionRefV1"
+        },
+        "configuration": {
+          "$ref": "#/$defs/processingSegmentConfigurationV1"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/processingSegmentV1"
+          }
         }
       },
       "additionalProperties": true

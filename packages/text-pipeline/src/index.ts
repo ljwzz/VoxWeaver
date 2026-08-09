@@ -95,6 +95,18 @@ export {
 } from './normalizer.js';
 
 export type {
+  CreateProcessingSegmentsInputV1,
+  CreateProcessingSegmentsOptionsV1,
+} from './processingSegmenter.js';
+export {
+  createProcessingSegmentsV1,
+  PROCESSING_SEGMENT_BOUNDARY_POLICY_VERSION,
+  PROCESSING_SEGMENTER_PROCESSOR_ID,
+  PROCESSING_SEGMENTER_PROCESSOR_VERSION,
+  ProcessingSegmenterError,
+} from './processingSegmenter.js';
+
+export type {
   DetectScenesInputV1,
   DetectScenesOptionsV1,
   SceneBoundaryReviewV1,

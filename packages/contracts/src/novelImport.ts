@@ -322,8 +322,51 @@ export interface SceneIndexV1Fields {
 export type SceneIndexV1
   = SceneIndexV1Fields & Record<string, unknown>;
 
+export interface ProcessingSegmentContextV1 {
+  readonly sourceRange: TextRangeV1;
+  readonly text: string;
+  readonly contentHash: string;
+}
+
+export interface ProcessingSegmentConfigurationV1 {
+  readonly maxSegmentBytes: number;
+  readonly contextBeforeBytes: number;
+  readonly contextAfterBytes: number;
+  readonly boundaryPolicyVersion: string;
+}
+
+/** The only formal ProcessingSegment representation in the novel structure contract. */
+export interface ProcessingSegmentV1 {
+  readonly processingSegmentId: string;
+  readonly chapterId: string;
+  readonly sceneId: string;
+  readonly sceneStartBoundaryCandidateId?: string;
+  readonly order: number;
+  readonly sourceRange: TextRangeV1;
+  readonly text: string;
+  readonly contentHash: string;
+  readonly blockReferences: readonly SceneBlockReferenceV1[];
+  readonly contextBefore?: ProcessingSegmentContextV1;
+  readonly contextAfter?: ProcessingSegmentContextV1;
+}
+
+export interface ProcessingSegmentIndexV1Fields {
+  readonly documentType: 'processing-segment-index';
+  readonly schemaVersion: typeof NOVEL_IMPORT_SCHEMA_VERSION;
+  readonly sourceAssetId: string;
+  readonly sourceHash: string;
+  readonly processorId: string;
+  readonly processorVersion: string;
+  readonly textRevision: TextRevisionRefV1 & { readonly textLayer: 'canonical' };
+  readonly configuration: ProcessingSegmentConfigurationV1;
+  readonly segments: readonly ProcessingSegmentV1[];
+}
+
+export type ProcessingSegmentIndexV1
+  = ProcessingSegmentIndexV1Fields & Record<string, unknown>;
+
 export type NovelImportDocumentV1
-  = ChapterIndexV1 | ImportedNovelV1 | SceneIndexV1;
+  = ChapterIndexV1 | ImportedNovelV1 | ProcessingSegmentIndexV1 | SceneIndexV1;
 
 export interface TxtSourceLocatorValidationContextV1 {
   readonly sourceAssetId: string;
@@ -922,6 +965,99 @@ const SCENE_INDEX_V1_SCHEMA = {
   additionalProperties: true,
 } as const;
 
+const PROCESSING_SEGMENT_CONTEXT_V1_SCHEMA = {
+  type: 'object',
+  required: ['sourceRange', 'text', 'contentHash'],
+  properties: {
+    sourceRange: { $ref: TEXT_RANGE_V1_REF },
+    text: NON_EMPTY_STRING,
+    contentHash: SHA256,
+  },
+  additionalProperties: false,
+} as const;
+
+const PROCESSING_SEGMENT_CONFIGURATION_V1_SCHEMA = {
+  type: 'object',
+  required: [
+    'maxSegmentBytes',
+    'contextBeforeBytes',
+    'contextAfterBytes',
+    'boundaryPolicyVersion',
+  ],
+  properties: {
+    maxSegmentBytes: SAFE_POSITIVE_INTEGER,
+    contextBeforeBytes: SAFE_NON_NEGATIVE_INTEGER,
+    contextAfterBytes: SAFE_NON_NEGATIVE_INTEGER,
+    boundaryPolicyVersion: NON_EMPTY_STRING,
+  },
+  additionalProperties: false,
+} as const;
+
+const PROCESSING_SEGMENT_V1_SCHEMA = {
+  type: 'object',
+  required: [
+    'processingSegmentId',
+    'chapterId',
+    'sceneId',
+    'order',
+    'sourceRange',
+    'text',
+    'contentHash',
+    'blockReferences',
+  ],
+  properties: {
+    processingSegmentId: UUID_V4,
+    chapterId: UUID_V4,
+    sceneId: UUID_V4,
+    sceneStartBoundaryCandidateId: UUID_V4,
+    order: SAFE_NON_NEGATIVE_INTEGER,
+    sourceRange: { $ref: TEXT_RANGE_V1_REF },
+    text: NON_EMPTY_STRING,
+    contentHash: SHA256,
+    blockReferences: {
+      type: 'array',
+      minItems: 1,
+      items: { $ref: '#/$defs/sceneBlockReferenceV1' },
+    },
+    contextBefore: { $ref: '#/$defs/processingSegmentContextV1' },
+    contextAfter: { $ref: '#/$defs/processingSegmentContextV1' },
+  },
+  additionalProperties: false,
+} as const;
+
+const PROCESSING_SEGMENT_INDEX_V1_SCHEMA = {
+  type: 'object',
+  required: [
+    'documentType',
+    'schemaVersion',
+    'sourceAssetId',
+    'sourceHash',
+    'processorId',
+    'processorVersion',
+    'textRevision',
+    'configuration',
+    'segments',
+  ],
+  properties: {
+    documentType: { const: 'processing-segment-index' },
+    schemaVersion: {
+      type: 'integer',
+      const: NOVEL_IMPORT_SCHEMA_VERSION,
+    },
+    sourceAssetId: UUID_V4,
+    sourceHash: SHA256,
+    processorId: NON_EMPTY_STRING,
+    processorVersion: NON_EMPTY_STRING,
+    textRevision: { $ref: TEXT_REVISION_REF_V1_REF },
+    configuration: { $ref: '#/$defs/processingSegmentConfigurationV1' },
+    segments: {
+      type: 'array',
+      items: { $ref: '#/$defs/processingSegmentV1' },
+    },
+  },
+  additionalProperties: true,
+} as const;
+
 export const NOVEL_IMPORT_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'https://voxweaver.local/schemas/novel-import.schema.json',
@@ -931,6 +1067,7 @@ export const NOVEL_IMPORT_SCHEMA = {
     { $ref: '#/$defs/importedNovelV1' },
     { $ref: '#/$defs/chapterIndexV1' },
     { $ref: '#/$defs/sceneIndexV1' },
+    { $ref: '#/$defs/processingSegmentIndexV1' },
   ],
   additionalProperties: true,
   $defs: {
@@ -953,6 +1090,10 @@ export const NOVEL_IMPORT_SCHEMA = {
     sceneV1: SCENE_V1_SCHEMA,
     sceneIssueV1: SCENE_ISSUE_V1_SCHEMA,
     sceneIndexV1: SCENE_INDEX_V1_SCHEMA,
+    processingSegmentContextV1: PROCESSING_SEGMENT_CONTEXT_V1_SCHEMA,
+    processingSegmentConfigurationV1: PROCESSING_SEGMENT_CONFIGURATION_V1_SCHEMA,
+    processingSegmentV1: PROCESSING_SEGMENT_V1_SCHEMA,
+    processingSegmentIndexV1: PROCESSING_SEGMENT_INDEX_V1_SCHEMA,
   },
 } as const;
 
@@ -977,6 +1118,8 @@ export function parseNovelImportDocumentV1(
     return parseChapterIndexV1(document);
   if (document.documentType === 'scene-index')
     return parseSceneIndexV1(document);
+  if (document.documentType === 'processing-segment-index')
+    return parseProcessingSegmentIndexV1(document);
   if (context === undefined)
     fail('ImportedNovel validation requires synchronous SHA-256 context functions');
   return parseImportedNovelV1(document, context);
@@ -1446,6 +1589,180 @@ export function parseSceneIndexV1(value: unknown): SceneIndexV1 {
   return sceneIndex;
 }
 
+export function parseProcessingSegmentIndexV1(
+  value: unknown,
+): ProcessingSegmentIndexV1 {
+  validateSchema(
+    value,
+    validators.processingSegmentIndex,
+    'Processing segment index',
+  );
+  const segmentIndex = value as ProcessingSegmentIndexV1;
+  const textRevision = parseNovelTextRevision(segmentIndex.textRevision);
+  if (textRevision.textLayer !== 'canonical') {
+    fail('Processing segment index textRevision must use the canonical text layer');
+  }
+
+  const segmentIds = new Set<string>();
+  const sceneChapters = new Map<string, string>();
+  const closedSceneIds = new Set<string>();
+  let activeSceneId: string | undefined;
+  let expectedSceneOrder = 0;
+  let previousSegmentEnd = 0;
+
+  for (const segment of segmentIndex.segments) {
+    if (segmentIds.has(segment.processingSegmentId)) {
+      fail(
+        `Processing segment index contains duplicate processingSegmentId ${segment.processingSegmentId}`,
+      );
+    }
+    segmentIds.add(segment.processingSegmentId);
+
+    const knownChapterId = sceneChapters.get(segment.sceneId);
+    if (knownChapterId !== undefined && knownChapterId !== segment.chapterId) {
+      fail('One ProcessingSegment Scene must not reference multiple Chapters');
+    }
+    sceneChapters.set(segment.sceneId, segment.chapterId);
+
+    if (segment.sceneId !== activeSceneId) {
+      if (closedSceneIds.has(segment.sceneId)) {
+        fail('ProcessingSegments for one Scene must form one contiguous group');
+      }
+      if (activeSceneId !== undefined)
+        closedSceneIds.add(activeSceneId);
+      activeSceneId = segment.sceneId;
+      expectedSceneOrder = 0;
+    }
+    if (segment.order !== expectedSceneOrder) {
+      fail('ProcessingSegment order must be contiguous within each Scene');
+    }
+    expectedSceneOrder += 1;
+
+    const sourceRange = parseNovelTextRange(segment.sourceRange, {
+      revision: textRevision,
+    });
+    if (sourceRange.startByte === sourceRange.endByte)
+      fail('ProcessingSegment sourceRange must be non-empty');
+    if (sourceRange.startByte < previousSegmentEnd) {
+      fail('ProcessingSegment source ranges must be globally monotonic and non-overlapping');
+    }
+    if (
+      segment.order > 0
+      && sourceRange.startByte !== previousSegmentEnd
+    ) {
+      fail('ProcessingSegments must contiguously cover their Scene');
+    }
+    previousSegmentEnd = sourceRange.endByte;
+
+    const segmentByteLength = assertProcessingSegmentText(
+      segment.text,
+      sourceRange,
+      'ProcessingSegment text',
+    );
+    if (segmentByteLength > segmentIndex.configuration.maxSegmentBytes) {
+      fail('ProcessingSegment text exceeds its explicit maxSegmentBytes');
+    }
+    assertProcessingSegmentBlockReferences(segment, sourceRange, segmentIndex);
+
+    if (segment.contextBefore !== undefined) {
+      const contextRange = parseProcessingSegmentContext(
+        segment.contextBefore,
+        textRevision,
+        segmentIndex.configuration.contextBeforeBytes,
+        'contextBefore',
+      );
+      if (contextRange.endByte !== sourceRange.startByte) {
+        fail('ProcessingSegment contextBefore must end at the main sourceRange start');
+      }
+    }
+    if (segment.contextAfter !== undefined) {
+      const contextRange = parseProcessingSegmentContext(
+        segment.contextAfter,
+        textRevision,
+        segmentIndex.configuration.contextAfterBytes,
+        'contextAfter',
+      );
+      if (contextRange.startByte !== sourceRange.endByte) {
+        fail('ProcessingSegment contextAfter must start at the main sourceRange end');
+      }
+    }
+  }
+  return segmentIndex;
+}
+
+function assertProcessingSegmentBlockReferences(
+  segment: ProcessingSegmentV1,
+  sourceRange: TextRangeV1,
+  segmentIndex: ProcessingSegmentIndexV1,
+): void {
+  const blockIds = new Set<string>();
+  let referenceCursor = sourceRange.startByte;
+  for (const reference of segment.blockReferences) {
+    if (blockIds.has(reference.blockId)) {
+      fail('ProcessingSegment blockReferences must not repeat a blockId');
+    }
+    blockIds.add(reference.blockId);
+    const range = parseNovelTextRange(reference.range, {
+      revision: segmentIndex.textRevision,
+    });
+    if (
+      range.startByte === range.endByte
+      || range.startByte !== referenceCursor
+      || range.endByte > sourceRange.endByte
+    ) {
+      fail('ProcessingSegment blockReferences must exactly cover its sourceRange');
+    }
+    referenceCursor = range.endByte;
+    const locator = parseTxtSourceLocatorV1(reference.sourceLocator);
+    if (
+      locator.sourceAssetId !== segmentIndex.sourceAssetId
+      || locator.sourceContentHash !== segmentIndex.sourceHash
+    ) {
+      fail('ProcessingSegment source locator provenance must match its index');
+    }
+  }
+  if (referenceCursor !== sourceRange.endByte) {
+    fail('ProcessingSegment blockReferences must reach the end of its sourceRange');
+  }
+}
+
+function parseProcessingSegmentContext(
+  context: ProcessingSegmentContextV1,
+  textRevision: TextRevisionRefV1,
+  maxBytes: number,
+  fieldName: string,
+): TextRangeV1 {
+  const sourceRange = parseNovelTextRange(context.sourceRange, {
+    revision: textRevision,
+  });
+  if (sourceRange.startByte === sourceRange.endByte) {
+    fail(`ProcessingSegment ${fieldName} sourceRange must be non-empty`);
+  }
+  const byteLength = assertProcessingSegmentText(
+    context.text,
+    sourceRange,
+    `ProcessingSegment ${fieldName} text`,
+  );
+  if (byteLength > maxBytes) {
+    fail(`ProcessingSegment ${fieldName} exceeds its explicit byte budget`);
+  }
+  return sourceRange;
+}
+
+function assertProcessingSegmentText(
+  text: string,
+  sourceRange: TextRangeV1,
+  fieldName: string,
+): number {
+  if (hasUnpairedSurrogate(text))
+    fail(`${fieldName} must contain exact Unicode scalar values`);
+  const byteLength = utf8ByteLength(text);
+  if (byteLength !== rangeByteLength(sourceRange)) {
+    fail(`${fieldName} UTF-8 byteLength must equal its sourceRange length`);
+  }
+  return byteLength;
+}
+
 function parseSceneBoundaryCursor(
   value: unknown,
   textRevision: TextRevisionRefV1,
@@ -1694,6 +2011,21 @@ function utf8ByteLength(text: string): number {
   return byteLength;
 }
 
+function hasUnpairedSurrogate(text: string): boolean {
+  for (let index = 0; index < text.length; index += 1) {
+    const codeUnit = text.charCodeAt(index);
+    if (codeUnit >= 0xD800 && codeUnit <= 0xDBFF) {
+      const nextCodeUnit = text.charCodeAt(index + 1);
+      if (nextCodeUnit < 0xDC00 || nextCodeUnit > 0xDFFF)
+        return true;
+      index += 1;
+    } else if (codeUnit >= 0xDC00 && codeUnit <= 0xDFFF) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function rangeByteLength(range: TextRangeV1): number {
   return range.endByte - range.startByte;
 }
@@ -1752,6 +2084,10 @@ function createNovelImportValidators() {
     sceneIndex: getSchema(
       ajv,
       `${NOVEL_IMPORT_SCHEMA.$id}#/$defs/sceneIndexV1`,
+    ),
+    processingSegmentIndex: getSchema(
+      ajv,
+      `${NOVEL_IMPORT_SCHEMA.$id}#/$defs/processingSegmentIndexV1`,
     ),
   };
 }
