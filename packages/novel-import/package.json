@@ -13,6 +13,7 @@
     "dist"
   ],
   "scripts": {
+    "benchmark:txt": "node benchmark/runTxtResourceBenchmark.mjs",
     "build": "tsc -p tsconfig.json",
     "clean": "rimraf dist ../../node_modules/.cache/voxweaver/novel-import.tsbuildinfo",
     "test": "tsc -p tsconfig.json && node --test test/*.test.mjs",

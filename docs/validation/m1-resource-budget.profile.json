@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "m1-resource-budget-profile-v1",
+  "profileId": "m1-d05-owner-approval-required",
+  "budgetProfileVersion": "unapproved-placeholder-v1",
+  "approval": {
+    "status": "unapproved"
+  },
+  "runsPerCase": 5,
+  "budgets": {
+    "maxSourceBytes": {
+      "default": null,
+      "minimum": null,
+      "maximum": null,
+      "globalCeiling": null
+    },
+    "readChunkBytes": {
+      "default": null,
+      "minimum": null,
+      "maximum": null,
+      "globalCeiling": null
+    },
+    "maxRssBytes": {
+      "default": null,
+      "minimum": null,
+      "maximum": null,
+      "globalCeiling": null
+    },
+    "maxTemporaryBytes": {
+      "default": null,
+      "minimum": null,
+      "maximum": null,
+      "globalCeiling": null
+    },
+    "maxBlockCount": {
+      "default": null,
+      "minimum": null,
+      "maximum": null,
+      "globalCeiling": null
+    },
+    "maxBlockUtf8Bytes": {
+      "default": null,
+      "minimum": null,
+      "maximum": null,
+      "globalCeiling": null
+    },
+    "taskTimeoutMs": {
+      "default": null,
+      "minimum": null,
+      "maximum": null,
+      "globalCeiling": null
+    },
+    "cancelCheckBytes": {
+      "default": null,
+      "minimum": null,
+      "maximum": null,
+      "globalCeiling": null
+    },
+    "progressStepBytes": {
+      "default": null,
+      "minimum": null,
+      "maximum": null,
+      "globalCeiling": null
+    }
+  }
+}

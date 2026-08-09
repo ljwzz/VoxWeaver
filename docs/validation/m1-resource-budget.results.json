@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "m1-resource-budget-results-v1",
+  "status": "not-run",
+  "approvalStatus": "unapproved",
+  "eligibleForGateClosure": false,
+  "gateStatus": "open",
+  "formalArtifactCreated": false,
+  "profileSha256": null,
+  "payloadSha256": null,
+  "environment": {
+    "machineId": "pending-owner-run",
+    "osPlatform": "pending-owner-run",
+    "osRelease": "pending-owner-run",
+    "arch": "pending-owner-run",
+    "nodeVersion": "pending-owner-run",
+    "icuVersion": "pending-owner-run"
+  },
+  "gitRevision": null,
+  "startedAt": null,
+  "completedAt": null,
+  "command": "fnm exec --using=24.18.1 pnpm --filter @voxweaver/novel-import run benchmark:txt -- --profile docs/validation/m1-resource-budget.profile.json --out docs/validation/m1-resource-budget.results.json",
+  "exitCode": null,
+  "blockers": [
+    "nine budget fields require independent owner approval",
+    "authorized real sample metadata and evidenceRef are not supplied",
+    "formal Node 24.18.1 benchmark has not been run with an approved profile",
+    "independent D05 closing review is pending"
+  ]
+}
