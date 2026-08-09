@@ -366,6 +366,7 @@ test('validates read-only stale queries and baseline-sensitive impact previews',
     producerArtifactId: direct.consumerArtifactId,
     producerRevisionId: direct.consumerRevisionId,
     depth: 2,
+    selector: { scriptUnitIds: ['script-unit-1'] },
   });
   const stale = stalePreview({
     currentArtifactRevisionId: NEXT_ARTIFACT_REVISION_ID,
@@ -402,6 +403,10 @@ test('validates read-only stale queries and baseline-sensitive impact previews',
         producerRevisionId: uuid(94),
         depth: 2,
       })],
+    },
+    {
+      ...current,
+      impacts: [impact({ selector: { scriptUnitIds: [] } })],
     },
     { ...current, schemaVersion: 2 },
   ]) {

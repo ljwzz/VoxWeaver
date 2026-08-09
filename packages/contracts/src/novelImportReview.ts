@@ -15,6 +15,7 @@ import type {
 } from './text.js';
 import type {
   ArtifactDependencyType,
+  ArtifactSelector,
   ReviewStatus,
 } from './workflow.js';
 
@@ -221,7 +222,7 @@ export interface NovelImportStaleImpactV1 {
   readonly producerRevisionId: string;
   readonly dependencyType: ArtifactDependencyType;
   readonly depth: number;
-  readonly selector?: NovelImportChangeSelectorV1;
+  readonly selector?: ArtifactSelector;
 }
 
 export interface NovelImportStalePreviewV1 {
@@ -303,6 +304,25 @@ const CHANGE_SELECTOR_SCHEMA = {
     { required: ['blockIds'] },
     { required: ['chapterIds'] },
   ],
+  additionalProperties: false,
+} as const;
+const ARTIFACT_SELECTOR_SCHEMA = {
+  type: 'object',
+  minProperties: 1,
+  properties: Object.fromEntries(
+    [
+      'chapterIds',
+      'blockIds',
+      'scriptUnitIds',
+      'voiceProfileIds',
+      'dictionaryEntryIds',
+    ].map(key => [key, {
+      type: 'array',
+      minItems: 1,
+      uniqueItems: true,
+      items: NON_EMPTY_STRING,
+    }]),
+  ),
   additionalProperties: false,
 } as const;
 const COMMAND_BASE_PROPERTIES = {
@@ -747,7 +767,7 @@ const STALE_IMPACT_SCHEMA = {
       enum: ['content', 'structure', 'voice', 'pronunciation', 'config'],
     },
     depth: SAFE_POSITIVE_INTEGER,
-    selector: { $ref: '#/$defs/changeSelectorV1' },
+    selector: { $ref: '#/$defs/artifactSelectorV1' },
   },
   additionalProperties: false,
 } as const;
@@ -801,6 +821,7 @@ export const NOVEL_IMPORT_REVIEW_SCHEMA = {
   $defs: {
     baselineRevisionV1: BASELINE_REVISION_SCHEMA,
     changeSelectorV1: CHANGE_SELECTOR_SCHEMA,
+    artifactSelectorV1: ARTIFACT_SELECTOR_SCHEMA,
     reviewQueryV1: REVIEW_QUERY_SCHEMA,
     classifyRangeCommandV1: CLASSIFY_RANGE_COMMAND_SCHEMA,
     adjustBoundaryCommandV1: ADJUST_BOUNDARY_COMMAND_SCHEMA,
