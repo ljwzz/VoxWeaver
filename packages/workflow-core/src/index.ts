@@ -5,6 +5,23 @@ export {
   sha256CanonicalJson,
 } from './fingerprint.js';
 export { selectorsIntersect } from './selector.js';
+export {
+  classifySourceAssetCommitAttempt,
+  getSourceAssetCommitIdentity,
+  getSourceAssetCommitIntent,
+  isSourceAssetCommitErrorCode,
+  parseSourceAssetCommitCommand,
+  SOURCE_ASSET_COMMIT_ERROR_CODES,
+  type SourceAssetCommitAttemptClassification,
+  type SourceAssetCommitCommand,
+  SourceAssetCommitError,
+  type SourceAssetCommitErrorCode,
+  type SourceAssetCommitIdentity,
+  type SourceAssetCommitIntent,
+  type SourceAssetCommitPort,
+  type SourceAssetCommitResult,
+  type SourceAssetTemporarySource,
+} from './sourceAssetCommitPort.js';
 export type {
   ActivateArtifactRevisionCommand,
   ArtifactDependencyInput,
