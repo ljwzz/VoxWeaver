@@ -4,6 +4,17 @@ export {
   type InputFingerprintDescriptor,
   sha256CanonicalJson,
 } from './fingerprint.js';
+export {
+  buildNovelImportImpactSelectorsV1,
+  type NovelImportAffectedConsumerV1,
+  type NovelImportChangeScopeV1,
+  type NovelImportImpactConsumerPlanInputV1,
+  type NovelImportImpactSelectorV1,
+  type NovelImportImpactSubscriptionPlanInputV1,
+  type NovelReimportAffectedIdsPlanInputV1,
+  type NovelReimportImpactPlanInputV1,
+  selectNovelImportAffectedConsumersV1,
+} from './novelImportImpact.js';
 export { selectorsIntersect } from './selector.js';
 export {
   classifySourceAssetCommitAttempt,
