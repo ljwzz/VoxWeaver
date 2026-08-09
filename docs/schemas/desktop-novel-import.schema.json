@@ -1,0 +1,1755 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxweaver.local/schemas/desktop-novel-import.schema.json",
+  "title": "VoxWeaver M1 desktop novel import IPC contract",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/methodPayloadEnvelopeV1"
+    },
+    {
+      "$ref": "#/$defs/methodResultEnvelopeV1"
+    },
+    {
+      "$ref": "#/$defs/errorEnvelopeV1"
+    },
+    {
+      "$ref": "#/$defs/eventEnvelopeV1"
+    }
+  ],
+  "$defs": {
+    "selectSourcePayloadV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "startPayloadV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "selectionToken",
+        "idempotencyKey",
+        "requestedBy"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "selectionToken": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^(?!\\s)(?![\\s\\S]*[\\\\/\\u0000])[\\s\\S]*\\S$"
+        },
+        "requestedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^(?!\\s)(?![\\s\\S]*[\\\\/\\u0000])[\\s\\S]*\\S$"
+        },
+        "sourceEncoding": {
+          "type": "string",
+          "enum": [
+            "gbk",
+            "gb18030",
+            "big5",
+            "utf-16le",
+            "utf-16be"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "taskPayloadV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "taskId"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "inspectPayloadV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "query"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "query": {
+          "$ref": "https://voxweaver.local/schemas/novel-import-review.schema.json#/$defs/reviewQueryV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stalePreviewPayloadV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "query"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "query": {
+          "$ref": "https://voxweaver.local/schemas/novel-import-review.schema.json#/$defs/stalePreviewQueryV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "reviewCommandPayloadV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "command"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "command": {
+          "$ref": "https://voxweaver.local/schemas/novel-import-review.schema.json#/$defs/reviewCommandV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sourceSelectionResultV1": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "contractVersion",
+            "projectId",
+            "projectSessionId",
+            "canceled"
+          ],
+          "properties": {
+            "contractVersion": {
+              "type": "string",
+              "const": "1"
+            },
+            "projectId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+            },
+            "projectSessionId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+            },
+            "canceled": {
+              "const": true
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "contractVersion",
+            "projectId",
+            "projectSessionId",
+            "canceled",
+            "selectionToken",
+            "displayName",
+            "expiresAt"
+          ],
+          "properties": {
+            "contractVersion": {
+              "type": "string",
+              "const": "1"
+            },
+            "projectId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+            },
+            "projectSessionId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+            },
+            "canceled": {
+              "const": false
+            },
+            "selectionToken": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            },
+            "displayName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^(?!\\s)(?![\\s\\S]*[\\\\/:\\u0000])[\\s\\S]*\\S$"
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "taskV1": {
+      "type": "object",
+      "required": [
+        "taskId",
+        "executionStatus",
+        "recoveryStatus",
+        "attempt",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "executionStatus": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "canceled"
+          ]
+        },
+        "recoveryStatus": {
+          "type": "string",
+          "enum": [
+            "none",
+            "resumable",
+            "retryable",
+            "manual",
+            "orphaned"
+          ]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "resultArtifactRevisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "errorCode": {
+          "type": "string",
+          "enum": [
+            "NOVEL_IMPORT_UNSUPPORTED_FORMAT",
+            "NOVEL_IMPORT_INVALID_SOURCE",
+            "NOVEL_IMPORT_ENCODING_REQUIRED",
+            "NOVEL_IMPORT_STRUCTURE_INVALID",
+            "NOVEL_IMPORT_REVIEW_REQUIRED",
+            "NOVEL_IMPORT_STALE_SESSION",
+            "NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE",
+            "NOVEL_IMPORT_RESOURCE_LIMIT_EXCEEDED",
+            "NOVEL_IMPORT_BUDGET_INVALID"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "executionStatus"
+          ],
+          "properties": {
+            "executionStatus": {
+              "const": "pending"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "resultArtifactRevisionId"
+                ]
+              },
+              {
+                "required": [
+                  "errorCode"
+                ]
+              },
+              {
+                "required": [
+                  "finishedAt"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "executionStatus"
+          ],
+          "properties": {
+            "executionStatus": {
+              "const": "running"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "resultArtifactRevisionId"
+                ]
+              },
+              {
+                "required": [
+                  "errorCode"
+                ]
+              },
+              {
+                "required": [
+                  "finishedAt"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "executionStatus",
+            "resultArtifactRevisionId",
+            "finishedAt"
+          ],
+          "properties": {
+            "executionStatus": {
+              "const": "succeeded"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "errorCode"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "executionStatus",
+            "errorCode",
+            "finishedAt"
+          ],
+          "properties": {
+            "executionStatus": {
+              "const": "failed"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "resultArtifactRevisionId"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "executionStatus",
+            "finishedAt"
+          ],
+          "properties": {
+            "executionStatus": {
+              "const": "canceled"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "resultArtifactRevisionId"
+                ]
+              },
+              {
+                "required": [
+                  "errorCode"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "taskResultV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "task"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "task": {
+          "$ref": "#/$defs/taskV1"
+        },
+        "baselineRevision": {
+          "$ref": "https://voxweaver.local/schemas/novel-import-review.schema.json#/$defs/baselineRevisionV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "taskQueryResultV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "task"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "task": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/taskV1"
+            }
+          ]
+        },
+        "baselineRevision": {
+          "$ref": "https://voxweaver.local/schemas/novel-import-review.schema.json#/$defs/baselineRevisionV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "inspectResultV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "snapshot"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "snapshot": {
+          "$ref": "https://voxweaver.local/schemas/novel-import-review.schema.json#/$defs/reviewSnapshotV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stalePreviewResultV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "preview"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "preview": {
+          "$ref": "https://voxweaver.local/schemas/novel-import-review.schema.json#/$defs/stalePreviewV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifactSummaryV1": {
+      "type": "object",
+      "required": [
+        "artifactId",
+        "artifactRevisionId",
+        "executionStatus",
+        "validityStatus",
+        "reviewStatus"
+      ],
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "artifactRevisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "executionStatus": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "running",
+            "succeeded",
+            "failed",
+            "canceled"
+          ]
+        },
+        "validityStatus": {
+          "type": "string",
+          "enum": [
+            "current",
+            "stale",
+            "superseded",
+            "missing"
+          ]
+        },
+        "reviewStatus": {
+          "type": "string",
+          "enum": [
+            "not_required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "reviewCommandResultV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "outcome",
+        "artifact",
+        "snapshot"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "committed",
+            "unchanged"
+          ]
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifactSummaryV1"
+        },
+        "snapshot": {
+          "$ref": "https://voxweaver.local/schemas/novel-import-review.schema.json#/$defs/reviewSnapshotV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "errorV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "code",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "DESKTOP_CORE_UNAVAILABLE",
+            "DESKTOP_METHOD_NOT_FOUND",
+            "DESKTOP_PAYLOAD_INVALID",
+            "DESKTOP_PROTOCOL_UNSUPPORTED",
+            "DESKTOP_SELECTION_INVALID",
+            "NOVEL_IMPORT_BUDGET_INVALID",
+            "NOVEL_IMPORT_CONFLICT",
+            "NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE",
+            "NOVEL_IMPORT_ENCODING_REQUIRED",
+            "NOVEL_IMPORT_INVALID_SOURCE",
+            "NOVEL_IMPORT_RESOURCE_LIMIT_EXCEEDED",
+            "NOVEL_IMPORT_REVIEW_REQUIRED",
+            "NOVEL_IMPORT_STALE_SESSION",
+            "NOVEL_IMPORT_STRUCTURE_INVALID",
+            "NOVEL_IMPORT_TASK_NOT_CANCELABLE",
+            "NOVEL_IMPORT_TASK_NOT_FOUND",
+            "NOVEL_IMPORT_TASK_NOT_RETRYABLE",
+            "NOVEL_IMPORT_UNSUPPORTED_FORMAT",
+            "PROJECT_READ_ONLY",
+            "PROJECT_SESSION_ACCESS_INVALID",
+            "PROJECT_SESSION_STALE"
+          ]
+        },
+        "message": {
+          "const": "The novel import request could not be completed."
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "novelImport.cancelTask",
+            "novelImport.executeReviewCommand",
+            "novelImport.getTask",
+            "novelImport.inspect",
+            "novelImport.previewStaleImpact",
+            "novelImport.retryTask",
+            "novelImport.selectSource",
+            "novelImport.start"
+          ]
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^(?!\\s)(?![\\s\\S]*[\\\\/\\u0000])[\\s\\S]*\\S$"
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "currentArtifactRevisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "DESKTOP_CORE_UNAVAILABLE"
+            },
+            "retryable": {
+              "const": true
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "DESKTOP_METHOD_NOT_FOUND"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "DESKTOP_PAYLOAD_INVALID"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "DESKTOP_PROTOCOL_UNSUPPORTED"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "DESKTOP_SELECTION_INVALID"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_BUDGET_INVALID"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_CONFLICT"
+            },
+            "retryable": {
+              "const": true
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE"
+            },
+            "retryable": {
+              "const": true
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_ENCODING_REQUIRED"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_INVALID_SOURCE"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_RESOURCE_LIMIT_EXCEEDED"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_REVIEW_REQUIRED"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_STALE_SESSION"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_STRUCTURE_INVALID"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_TASK_NOT_CANCELABLE"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_TASK_NOT_FOUND"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_TASK_NOT_RETRYABLE"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "NOVEL_IMPORT_UNSUPPORTED_FORMAT"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "PROJECT_READ_ONLY"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "PROJECT_SESSION_ACCESS_INVALID"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        },
+        {
+          "required": [
+            "code",
+            "retryable"
+          ],
+          "properties": {
+            "code": {
+              "const": "PROJECT_SESSION_STALE"
+            },
+            "retryable": {
+              "const": false
+            }
+          }
+        }
+      ]
+    },
+    "taskProgressEventV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "eventId",
+        "eventType",
+        "occurredAt",
+        "sequence",
+        "task"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "task": {
+          "$ref": "#/$defs/taskV1"
+        },
+        "eventType": {
+          "const": "novelImport.taskProgress"
+        }
+      },
+      "additionalProperties": false
+    },
+    "taskCompletedEventV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "eventId",
+        "eventType",
+        "occurredAt",
+        "sequence",
+        "task",
+        "baselineRevision"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "task": {
+          "$ref": "#/$defs/taskV1"
+        },
+        "eventType": {
+          "const": "novelImport.taskCompleted"
+        },
+        "baselineRevision": {
+          "$ref": "https://voxweaver.local/schemas/novel-import-review.schema.json#/$defs/baselineRevisionV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "taskFailedEventV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "eventId",
+        "eventType",
+        "occurredAt",
+        "sequence",
+        "task",
+        "error"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "task": {
+          "$ref": "#/$defs/taskV1"
+        },
+        "eventType": {
+          "const": "novelImport.taskFailed"
+        },
+        "error": {
+          "$ref": "#/$defs/errorV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "taskRetryScheduledEventV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "eventId",
+        "eventType",
+        "occurredAt",
+        "sequence",
+        "task",
+        "previousAttempt"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "task": {
+          "$ref": "#/$defs/taskV1"
+        },
+        "eventType": {
+          "const": "novelImport.taskRetryScheduled"
+        },
+        "previousAttempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "taskCanceledEventV1": {
+      "type": "object",
+      "required": [
+        "contractVersion",
+        "projectId",
+        "projectSessionId",
+        "eventId",
+        "eventType",
+        "occurredAt",
+        "sequence",
+        "task"
+      ],
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "projectSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "task": {
+          "$ref": "#/$defs/taskV1"
+        },
+        "eventType": {
+          "const": "novelImport.taskCanceled"
+        }
+      },
+      "additionalProperties": false
+    },
+    "methodPayloadEnvelopeV1": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "payload"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "payload"
+            },
+            "method": {
+              "const": "novelImport.selectSource"
+            },
+            "payload": {
+              "$ref": "#/$defs/selectSourcePayloadV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "payload"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "payload"
+            },
+            "method": {
+              "const": "novelImport.start"
+            },
+            "payload": {
+              "$ref": "#/$defs/startPayloadV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "payload"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "payload"
+            },
+            "method": {
+              "const": "novelImport.getTask"
+            },
+            "payload": {
+              "$ref": "#/$defs/taskPayloadV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "payload"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "payload"
+            },
+            "method": {
+              "const": "novelImport.cancelTask"
+            },
+            "payload": {
+              "$ref": "#/$defs/taskPayloadV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "payload"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "payload"
+            },
+            "method": {
+              "const": "novelImport.retryTask"
+            },
+            "payload": {
+              "$ref": "#/$defs/taskPayloadV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "payload"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "payload"
+            },
+            "method": {
+              "const": "novelImport.inspect"
+            },
+            "payload": {
+              "$ref": "#/$defs/inspectPayloadV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "payload"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "payload"
+            },
+            "method": {
+              "const": "novelImport.previewStaleImpact"
+            },
+            "payload": {
+              "$ref": "#/$defs/stalePreviewPayloadV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "payload"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "payload"
+            },
+            "method": {
+              "const": "novelImport.executeReviewCommand"
+            },
+            "payload": {
+              "$ref": "#/$defs/reviewCommandPayloadV1"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "methodResultEnvelopeV1": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "result"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "result"
+            },
+            "method": {
+              "const": "novelImport.selectSource"
+            },
+            "result": {
+              "$ref": "#/$defs/sourceSelectionResultV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "result"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "result"
+            },
+            "method": {
+              "const": "novelImport.start"
+            },
+            "result": {
+              "$ref": "#/$defs/taskResultV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "result"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "result"
+            },
+            "method": {
+              "const": "novelImport.getTask"
+            },
+            "result": {
+              "$ref": "#/$defs/taskQueryResultV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "result"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "result"
+            },
+            "method": {
+              "const": "novelImport.cancelTask"
+            },
+            "result": {
+              "$ref": "#/$defs/taskResultV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "result"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "result"
+            },
+            "method": {
+              "const": "novelImport.retryTask"
+            },
+            "result": {
+              "$ref": "#/$defs/taskResultV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "result"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "result"
+            },
+            "method": {
+              "const": "novelImport.inspect"
+            },
+            "result": {
+              "$ref": "#/$defs/inspectResultV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "result"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "result"
+            },
+            "method": {
+              "const": "novelImport.previewStaleImpact"
+            },
+            "result": {
+              "$ref": "#/$defs/stalePreviewResultV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "method",
+            "result"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "result"
+            },
+            "method": {
+              "const": "novelImport.executeReviewCommand"
+            },
+            "result": {
+              "$ref": "#/$defs/reviewCommandResultV1"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "errorEnvelopeV1": {
+      "type": "object",
+      "required": [
+        "messageKind",
+        "error"
+      ],
+      "properties": {
+        "messageKind": {
+          "const": "error"
+        },
+        "error": {
+          "$ref": "#/$defs/errorV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventEnvelopeV1": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "event"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "event"
+            },
+            "event": {
+              "$ref": "#/$defs/taskProgressEventV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "event"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "event"
+            },
+            "event": {
+              "$ref": "#/$defs/taskCompletedEventV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "event"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "event"
+            },
+            "event": {
+              "$ref": "#/$defs/taskFailedEventV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "event"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "event"
+            },
+            "event": {
+              "$ref": "#/$defs/taskRetryScheduledEventV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "messageKind",
+            "event"
+          ],
+          "properties": {
+            "messageKind": {
+              "const": "event"
+            },
+            "event": {
+              "$ref": "#/$defs/taskCanceledEventV1"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}
