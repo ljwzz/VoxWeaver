@@ -2,9 +2,9 @@
 
 状态：`draft`
 
-版本：`0.4.0`
+版本：`0.6.0`
 
-日期：2026-08-08
+日期：2026-08-09
 
 适用范围：桌面端 MVP
 
@@ -14,13 +14,12 @@
 
 本规格细化 VoxWeaver 桌面端的运行时、语言、进程、通信、目录、任务恢复和安全边界。
 
-本规格当前仍为整体设计草案。[ADR 0001](../adr/0001-model-capabilities-via-provider-apis.md) 已确认模型能力统一通过外部 Provider API 接入，但不表示已经完成以下动作：
+本规格当前仍为整体设计草案。[ADR 0001](../adr/0001-model-capabilities-via-provider-apis.md) 已确认模型能力统一通过外部 Provider API 接入。阶段 00 已建立 Electron/Vue 桌面壳、Main/Preload/Renderer/Core 跨进程链路和项目页；其余下列动作仍未完成：
 
-- 创建 Electron/Vue 桌面壳并完成 Main/Preload/Renderer/Core 跨进程基础传输；Node.js monorepo 与 M0 后端基线已存在；
-- 确认 Electron、Vue 等尚未冻结依赖的精确版本与构建器；包管理器与开发 Node.js 基线已有根配置，SQLite 语义已有 ADR 0002，但生产 Electron 内置 Node 与该 ADR 的兼容性仍由 ARCH-D02 验证；
+- Electron、Forge、Webpack、Vue、Playwright 和开发 Node.js 版本已由 [ADR 0003](../adr/0003-electron-desktop-toolchain.md) 冻结。未签名 macOS arm64 开发 `.app` 与其实际 Core 的 Node/SQLite capability 已验证，但签名、更新、正式发布和完整 ARCH-D02 关闭证据仍未具备；
 - 确认首批 LLM、TTS 和 ASR Provider API 及其数据策略；
 - 补齐 M5 外部非模型音频检测 API 的精确 profile/ADR，以及 M6 随应用分发的受控本地处理器实现、许可和 runtime profile；
-- 完成目标平台打包和纵向验证。
+- 完成正式目标平台的打包、签名、安装、升级、回退和发布验证。
 
 其余核心选型必须在进入对应实现前通过 ADR 或可复现验证固定，并同步关联阶段计划。
 
@@ -54,7 +53,7 @@
 
 ## 4. 技术结论
 
-Electron 应用不要求所有后端能力都使用 JavaScript 或 TypeScript。当前语言与运行时边界如下；精确版本仍服从对应 Gate：
+Electron 应用不要求所有后端能力都使用 JavaScript 或 TypeScript。当前开发工具链精确版本服从 ADR 0003，发布能力仍服从对应 Gate：
 
 | 区域 | 推荐语言/运行时 | 结论 | 原因 |
 |---|---|---|---|
@@ -182,18 +181,26 @@ Vue 代码统一使用 Composition API 和 `<script setup lang="ts">`。跨页�
 
 ### 7.2 Preload
 
-Preload 通过 `contextBridge.exposeInMainWorld()` 暴露单一命名空间：
+Preload 通过 `contextBridge.exposeInMainWorld()` 暴露单一命名空间。阶段 00 的实际公开面为：
 
 ```ts
 interface VoxWeaverDesktopApi {
-  app: AppDesktopApi;
-  project: ProjectDesktopApi;
-  task: TaskDesktopApi;
-  provider: ProviderDesktopApi;
-  artifact: ArtifactDesktopApi;
-  events: EventDesktopApi;
+  app: { getHealth(): Promise<{ healthy: true }> };
+  dialog: { selectDirectory(input: DirectorySelectionInput): Promise<DirectorySelection> };
+  project: {
+    create(input: CreateProjectInput): Promise<ProjectSummaryDto>;
+    open(input: OpenProjectInput): Promise<ProjectSummaryDto>;
+    switch(input: OpenProjectInput): Promise<ProjectSummaryDto>;
+    close(): Promise<void>;
+    getSummary(): Promise<ProjectSummaryDto | null>;
+    listRecent(): Promise<readonly RecentProjectDto[]>;
+    removeRecent(input: { projectId: string }): Promise<boolean>;
+  };
+  onCoreState(listener: (state: CoreStateUpdate) => void): () => void;
 }
 ```
+
+Task、Provider、artifact、受控资源和导出方法不属于阶段 00 的公开 API；只有相应里程碑任务卡、schema、夹具和权限矩阵齐备后才可新增。
 
 Preload 必须：
 
@@ -607,40 +614,21 @@ interface DesktopEvent<TPayload> {
 
 JSON Schema 是 IPC、Provider 规范化输入输出和持久化契约的机器可校验真值。TypeScript 类型必须由 schema 生成，或通过双向契约测试证明与 schema 一致；不得手工维护多套互不校验的定义。
 
-### 9.3 首批方法
+### 9.3 已注册的阶段 00 方法
 
 ```text
-app.getRuntimeInfo
 app.getHealth
-dialog.selectWorkspaceRoot
-dialog.selectImportFiles
+dialog.selectDirectory
 project.listRecent
 project.create
 project.open
-project.openReadOnly
+project.switch
 project.close
 project.getSummary
-project.previewChangeImpact
-task.create
-task.cancel
-task.retry
-task.list
-task.get
-provider.listProfiles
-provider.saveProfile
-provider.deleteProfile
-provider.testConnection
-provider.getCapabilities
-provider.listModels
-artifact.get
-artifact.listRevisions
-artifact.activateRevision
-artifact.getPlaybackUrl
-export.create
-export.revealInFileManager
+project.removeRecent
 ```
 
-方法名只是协议草案。实现前必须生成对应 schema、合法/非法夹具和权限矩阵。
+只读打开是 `project.open`/`project.switch` 的 `accessMode: "read-only"` payload 选项，不另设旁路方法。每个已注册方法均有运行时 parser、文档 Schema、合法/非法夹具和 Main sender/window/channel 权限校验。未列出的方法尚未注册，必须在对应任务卡完成 schema、夹具和权限矩阵后才能加入。
 
 ### 9.4 资源访问
 
@@ -839,7 +827,7 @@ JavaScript 构建产物可以进入 ASAR。生产包不得包含 Python 运行�
 - TypeScript 编译目标与 Electron 内置 Node/Chromium 能力对齐；
 - Provider profile、能力契约、adapter、非模型音频处理器和 schema 分别版本化；
 - 破坏性协议变化升级主版本并提供兼容或迁移策略；
-- Electron、Chromium、TypeScript 和构建器的精确版本由工程初始化/工具链 ADR 固定；pnpm 与开发/测试 Node.js 基线由根 `package.json` 和 `.nvmrc` 约束。
+- Electron、Chromium、TypeScript 和构建器的精确版本由 [ADR 0003](../adr/0003-electron-desktop-toolchain.md) 固定；pnpm 与开发/测试 Node.js 基线由根 `package.json` 和 `.nvmrc` 约束。
 
 ## 15. 未来适配
 
@@ -939,7 +927,7 @@ HTTP adapter         ─┘
 
 1. `[已验证后端基线]` 保留 [ADR 0001](../adr/0001-model-capabilities-via-provider-apis.md) 的外部 Provider API 边界，以及仅 Electron 桌面端、Vue Renderer 内嵌交付、MVP 无入站 HTTP 服务的范围；
 2. `[已验证后端基线]` 保留现有 monorepo、pnpm、contracts/schema、项目目录、SQLite、锁、Task workflow、迁移和恢复实现；开发/生产 Node 与 Electron 的最终一致性仍由 ARCH-D02 关闭；
-3. `[待实施]` 建立 Main、Preload、最小 Renderer、Core 启动/健康检查、MessagePort 和 IPC 契约夹具，完成阶段 00 桌面纵向传输；
+3. `[已验证阶段 00]` Main、Preload、最小 Renderer、Core 启动/健康检查、MessagePort 和 IPC 契约夹具已完成；未签名 macOS arm64 开发 `.app` 的实际 E2E 已覆盖 Renderer → Preload → Main → MessagePort → Core，且 Core 内部 Node/SQLite capability 已运行；
 4. `[待实施]` 实现 Provider core、Mock HTTP Provider、凭据引用和数据策略；
 5. `[待实施]` 实现 LLM、TTS 和 ASR 能力端口、契约夹具，以及同步/流式/异步任务、取消和重启恢复纵向切片；
 6. `[待 Gate]` 接入首批已批准的 LLM、TTS 和 ASR Provider adapter；
@@ -971,6 +959,8 @@ HTTP adapter         ─┘
 
 已确认策略（2026-08-08）：只选一组能完成打包、签名和交互回归的 OS/CPU；不同时声明多平台正式支持，也不用开发构建充当正式发布证据。
 
+部分证据（2026-08-09）：已生成并启动未签名 macOS arm64 开发 `.app`，但未配置 maker、签名、公证、安装包、发布、更新或回退流程。因此该开发验证不构成正式支持平台证据，ARCH-D01 保持 `open`。
+
 直接阻塞：M6-D01 关闭，以及由其放行的 M6-X01A、M6-10、M6-19 目标平台验证；本规格第 16.5、17 节的目标平台安装包与完整纵向验收；本架构规格从 `draft` 升级为 `accepted`。
 
 未关闭时仍可执行：不对 M1～M5、M7、M8 新增任务级限制；M6 只能使用 M6-D01 的 open-state 白名单，不得派发 M6-X01A、M6-10、M6-19 中的真实处理器或目标平台验证。
@@ -991,7 +981,9 @@ HTTP adapter         ─┘
 
 未关闭时仍可执行：不对 M1～M5、M7、M8 新增任务级限制；M6 只能使用 M6-D01 的 open-state 白名单。阶段 00 可继续桌面与 Core 的非发布开发验证，但不得宣称安装包、签名、更新或回退已验收。
 
-关闭证据：在本节记录 accepted 工具链 ADR，以及打包工具/精确版本、Electron/Chromium/内置 Node 精确版本、发布主体、证书来源与密钥不落盘边界、签名启用状态、更新渠道、回退策略、无密钥可复制命令、成功与失败判定、执行环境、负责人和证据路径。还必须由负责人明确 ADR 0002 的 Node.js `24.19.x` 是唯一支持范围还是验证基线：若是唯一支持范围，先把根 `engines` 收窄到该范围；若只是验证基线，先接受修订或取代 ADR。随后在打包后的 Core 中记录 `process.versions.node`，并用可直接复制的命令验证 `node:sqlite` 的 `DatabaseSync`、`backup()` 及本项目已使用的连接选项；根 `engines`、`.nvmrc`、Electron 内置 Node 与生效 ADR 必须一致。执行模型不得自行选择解释或放宽；任一项未齐时保持 `open`。
+部分证据（2026-08-09）：[ADR 0003](../adr/0003-electron-desktop-toolchain.md) 已固定 Electron 43.2.0、Electron Forge 7.11.2、Webpack TypeScript、Vue 3.5.41、Playwright 1.62.1 和 24.18.x 开发验证范围；ADR 0002、根 `engines` 与 `.nvmrc` 已按该范围对齐。Forge 已生成未签名 macOS arm64 开发 `.app`；Playwright 已启动该应用并验证其 Core 内的 `process.versions.node` 为 `24.18.x`，以及 `node:sqlite` 的 `DatabaseSync`、`backup()` 和本项目使用的连接选项。未配置 maker、签名、发布或自动更新；该部分证据只允许阶段 00 非发布开发，不关闭本 Gate。
+
+关闭证据：补齐 Electron/Chromium/内置 Node 的实际打包记录、发布主体、证书来源与密钥不落盘边界、签名启用状态、更新渠道、回退策略、无密钥可复制命令、成功与失败判定、执行环境、负责人和证据路径。还必须在打包后的 Core 中记录 `process.versions.node`，并验证 `node:sqlite` 的 `DatabaseSync`、`backup()` 及本项目已使用的连接选项。任一项未齐时保持 `open`。
 
 ### ARCH-D03：历史产物配额与可恢复清理
 
@@ -1018,8 +1010,8 @@ HTTP adapter         ─┘
 
 以下事项已有当前权威结论，不再作为开放项重复派发：
 
-- pnpm 版本由根 `package.json` 固定；`.nvmrc` 固定开发/测试验证版本，但根 `engines` 的支持范围与 ADR 0002 的 `24.19.x` 文义尚须由 ARCH-D02 对齐，生产 Electron 内置 Node 的精确版本及兼容性也由该 Gate 关闭；
-- SQLite、journal、busy timeout、备份和迁移语义由 [ADR 0002](../adr/0002-project-state-with-node-sqlite.md) 约束；其在生产 Electron 内置 Node 中的可用性仍须由 ARCH-D02 验证；
+- pnpm 版本由根 `package.json` 固定；根 `engines`、`.nvmrc` 与 ADR 0002 已对齐到 Node.js 24.18.x 开发验证范围，Electron 43.2.0 内置 Node.js 24.18.0。未签名开发包中 Core 的实际版本和 SQLite capability 已验证，但签名、更新、回退和正式发布闭环仍由 ARCH-D02 关闭；
+- SQLite、journal、busy timeout、备份和迁移语义由 [ADR 0002](../adr/0002-project-state-with-node-sqlite.md) 约束；`DatabaseSync`、`backup()` 和本项目的连接选项已在未签名开发包 Core 中验证，不能据此推断正式发布验收完成；
 - 自定义媒体协议的范围请求属于 M6/M7 必须验证的实现要求，不是自由选择项；
 - CLI/HTTP adapter 不属于当前 MVP，不阻塞 M1～M8。
 
@@ -1052,6 +1044,8 @@ HTTP adapter         ─┘
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
+| 0.6.0 | 2026-08-09 | 阶段 00 桌面纵向闭环已验证：未签名 macOS arm64 开发 `.app`、实际 Renderer→Core E2E 与 Core Node/SQLite capability 已通过；ARCH-D01/D02 保持 open |
+| 0.5.0 | 2026-08-09 | 接受 ADR 0003，冻结阶段 00 非发布 Electron/Forge/Webpack/Vue 工具链与 Node.js 24.18.x 开发验证范围；ARCH-D02 保持 open |
 | 0.4.0 | 2026-08-08 | 移除独立网页端和 `apps/web`，Vue Renderer 收敛到 `apps/desktop/renderer` |
 | 0.3.0 | 2026-08-08 | 根据 ADR 0001 删除 Python/本地模型 Worker，LLM、TTS、ASR 等统一改为外部 Provider API |
 | 0.2.0 | 2026-08-08 | 明确所有 LLM 能力只通过外部 Provider API 接入，支持用户管理的本地服务和云厂商官方服务 |

@@ -16,3 +16,4 @@
 
 - [ADR 0001：模型能力统一通过 Provider API 接入](./0001-model-capabilities-via-provider-apis.md)
 - [ADR 0002：项目状态库使用 Node.js 内置 SQLite](./0002-project-state-with-node-sqlite.md)
+- [ADR 0003：Electron 桌面开发工具链](./0003-electron-desktop-toolchain.md)

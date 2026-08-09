@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "sourceMap": true
+  },
+  "include": [
+    "*.ts",
+    "core/**/*.ts",
+    "main/**/*.ts",
+    "preload/**/*.ts",
+    "renderer/**/*.ts",
+    "renderer/**/*.vue",
+    "shared/**/*.ts"
+  ]
+}

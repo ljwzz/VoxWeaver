@@ -1,7 +1,9 @@
 import type {
   AssertProjectSessionCommand,
   CreateProjectCommand,
+  InspectProjectCommand,
   OpenProjectCommand,
+  ProjectInspectionPreview,
   ProjectWorkflowApplicationService,
   ProjectWorkflowFactory,
   ProjectWorkspacePort,
@@ -52,6 +54,12 @@ export class AppCoreService {
 
   getActiveProject(): ProjectContext | undefined {
     return this.#projects.getActiveProject();
+  }
+
+  inspectProject(
+    command: InspectProjectCommand,
+  ): Promise<ProjectInspectionPreview> {
+    return this.#projects.inspectProject(command);
   }
 
   openProject(command: OpenProjectCommand): Promise<ProjectContext> {

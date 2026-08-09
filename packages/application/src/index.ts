@@ -13,6 +13,10 @@ export {
 export type {
   AssertProjectSessionCommand,
   CreateProjectCommand,
+  InspectProjectCommand,
   OpenProjectCommand,
+  ProjectInspectionPreview,
   ProjectWorkspacePort,
+  ProjectWriteLockInspection,
+  ProjectWriteLockInspectionStatus,
 } from './projectWorkspacePort.js';

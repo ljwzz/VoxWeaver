@@ -24,6 +24,9 @@ node_modules/
 .pnpm-store/
 dist/
 coverage/
+apps/desktop/.webpack/
+apps/desktop/out/
+apps/desktop/test/.generated/
 
 # Logs and local databases
 *.log

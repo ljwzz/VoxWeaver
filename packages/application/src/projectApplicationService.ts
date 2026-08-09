@@ -3,7 +3,9 @@ import type { ProjectContext } from '@voxweaver/contracts';
 import type {
   AssertProjectSessionCommand,
   CreateProjectCommand,
+  InspectProjectCommand,
   OpenProjectCommand,
+  ProjectInspectionPreview,
   ProjectWorkspacePort,
 } from './projectWorkspacePort.js';
 import { ProjectApplicationError } from './projectApplicationError.js';
@@ -106,6 +108,22 @@ export class ProjectApplicationService {
     return this.#activeProject?.context;
   }
 
+  async inspectProject(
+    command: InspectProjectCommand,
+  ): Promise<ProjectInspectionPreview> {
+    this.#assertNoOperation();
+
+    const preview = await this.#inspectWorkspaceProject(command);
+    if (!preview) {
+      throw new ProjectApplicationError(
+        'PROJECT_INSPECTION_UNAVAILABLE',
+        'The configured project workspace does not support project inspection.',
+      );
+    }
+
+    return preview;
+  }
+
   async runInActiveProjectSession<T>(
     command: AssertProjectSessionCommand,
     operation: (context: ProjectContext) => Promise<T>,
@@ -122,6 +140,7 @@ export class ProjectApplicationService {
   async openProject(command: OpenProjectCommand): Promise<ProjectContext> {
     this.#beginActivation();
     try {
+      await this.#assertMigrationConfirmed(command);
       const activeSession = createActiveProjectSession(
         await this.#workspace.openProject(command),
       );
@@ -137,6 +156,7 @@ export class ProjectApplicationService {
     this.#operation = 'switching';
 
     try {
+      await this.#assertMigrationConfirmed(command);
       const activeSession = this.#activeProject;
       if (activeSession) {
         await this.#workspace.closeProject(activeSession.workspaceContext);
@@ -183,6 +203,18 @@ export class ProjectApplicationService {
     }
   }
 
+  async #assertMigrationConfirmed(command: OpenProjectCommand): Promise<void> {
+    const preview = await this.#inspectWorkspaceProject({
+      projectDirectory: command.projectDirectory,
+    });
+    if (preview?.migrationRequired && command.confirmMigration !== true) {
+      throw new ProjectApplicationError(
+        'PROJECT_MIGRATION_CONFIRMATION_REQUIRED',
+        'Project migration requires explicit confirmation.',
+      );
+    }
+  }
+
   #beginActivation(): void {
     this.#assertCanStartLifecycleOperation();
 
@@ -194,6 +226,26 @@ export class ProjectApplicationService {
     }
 
     this.#operation = 'activating';
+  }
+
+  async #inspectWorkspaceProject(
+    command: InspectProjectCommand,
+  ): Promise<ProjectInspectionPreview | undefined> {
+    const inspectProject = this.#workspace.inspectProject;
+    if (!inspectProject)
+      return undefined;
+
+    const preview = await inspectProject.call(this.#workspace, command);
+    return Object.freeze({
+      displayName: preview.displayName,
+      layoutVersion: preview.layoutVersion,
+      migrationRequired: preview.migrationRequired,
+      projectId: preview.projectId,
+      writeLock: Object.freeze({
+        recoveryAvailable: preview.writeLock.recoveryAvailable,
+        status: preview.writeLock.status,
+      }),
+    });
   }
 }
 

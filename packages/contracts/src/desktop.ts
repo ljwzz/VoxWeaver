@@ -38,7 +38,7 @@ const DESKTOP_PROJECT_CONTEXT_SCHEMA = {
     projectId: NON_EMPTY_STRING,
     projectSessionId: NON_EMPTY_STRING,
   },
-  additionalProperties: true,
+  additionalProperties: false,
 } as const;
 
 const DESKTOP_ERROR_SCHEMA = {
@@ -61,7 +61,7 @@ export interface DesktopProjectContextFields {
   readonly projectSessionId: string;
 }
 
-export type DesktopProjectContext = DesktopProjectContextFields & Record<string, unknown>;
+export type DesktopProjectContext = DesktopProjectContextFields;
 
 export interface DesktopRequestFields<TPayload extends JsonValue = JsonValue> {
   readonly protocolVersion: typeof DESKTOP_PROTOCOL_VERSION;

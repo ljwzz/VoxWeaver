@@ -20,6 +20,9 @@ export default antfu({
   ignores: [
     '.codex',
     '.codegraph',
+    'apps/desktop/.webpack/**',
+    'apps/desktop/out/**',
+    'apps/desktop/test/.generated/**',
     '**/coverage/**',
     '**/dist/**',
     '**/*.md',

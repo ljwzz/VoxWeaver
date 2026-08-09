@@ -13,8 +13,31 @@ export interface CreateProjectCommand {
 
 export interface OpenProjectCommand {
   accessMode?: ProjectAccessMode;
+  confirmMigration?: boolean;
   projectDirectory: string;
   recoverStaleWriteLock?: boolean;
+}
+
+export interface InspectProjectCommand {
+  projectDirectory: string;
+}
+
+export type ProjectWriteLockInspectionStatus
+  = | 'available'
+    | 'locked'
+    | 'recoverable';
+
+export interface ProjectWriteLockInspection {
+  readonly recoveryAvailable: boolean;
+  readonly status: ProjectWriteLockInspectionStatus;
+}
+
+export interface ProjectInspectionPreview {
+  readonly displayName: string;
+  readonly layoutVersion: number;
+  readonly migrationRequired: boolean;
+  readonly projectId: string;
+  readonly writeLock: ProjectWriteLockInspection;
 }
 
 export interface ProjectWorkspacePort {
@@ -27,5 +50,15 @@ export interface ProjectWorkspacePort {
    */
   closeProject: (project: ProjectContext) => Promise<void>;
   createProject: (command: CreateProjectCommand) => Promise<ProjectContext>;
+  /**
+   * Reads and validates a project without acquiring a write lock, recovering
+   * stale state, migrating data, or otherwise changing the workspace.
+   *
+   * Optional for compatibility with adapters created before inspection was
+   * introduced. Application callers receive a stable error when it is absent.
+   */
+  inspectProject?: (
+    command: InspectProjectCommand,
+  ) => Promise<ProjectInspectionPreview>;
   openProject: (command: OpenProjectCommand) => Promise<ProjectContext>;
 }

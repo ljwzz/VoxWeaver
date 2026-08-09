@@ -15,10 +15,14 @@ export {
 export {
   type CreateProjectWorkspaceCommand,
   createSafeSlug,
+  type InspectProjectWorkspaceCommand,
   NodeProjectWorkspace,
   type NodeProjectWorkspaceOptions,
   type OpenProjectWorkspaceCommand,
   PROJECT_LAYOUT_DIRECTORIES,
+  type ProjectWorkspaceInspectionPreview,
+  type ProjectWorkspaceWriteLockInspection,
+  type ProjectWorkspaceWriteLockStatus,
 } from './nodeProjectWorkspace.js';
 export {
   ProjectStateError,

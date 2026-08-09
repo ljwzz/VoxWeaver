@@ -59,13 +59,33 @@ test('keeps documented JSON fixture validation and runtime parsing aligned', () 
 
 test('preserves compatible unknown desktop message fields', () => {
   const fixture = fixtures.find(
-    fixture => fixture.name === 'valid request with project context and unknown fields',
+    fixture => fixture.name === 'valid request with exact project context and unknown envelope fields',
   );
   const input = structuredClone(fixture.value);
 
   assert.equal(parseDesktopRequest(input), input);
   assert.deepEqual(input.futureField, { enabled: true });
-  assert.equal(input.projectContext.futureContextField, true);
+  assert.deepEqual(input.projectContext, {
+    projectId: 'project-1',
+    projectSessionId: 'session-1',
+  });
+});
+
+test('rejects path-bearing fields in a public project context', () => {
+  assert.throws(
+    () => parseDesktopRequest({
+      method: 'project.close',
+      payload: {},
+      projectContext: {
+        projectDirectory: '/private/project',
+        projectId: 'project-1',
+        projectSessionId: 'session-1',
+      },
+      protocolVersion: '1',
+      requestId: 'request-path',
+    }),
+    DesktopMessageValidationError,
+  );
 });
 
 test('rejects non-JSON payloads, results, and error details', () => {

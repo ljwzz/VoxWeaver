@@ -4,6 +4,7 @@
     "composite": true,
     "tsBuildInfoFile": "../../node_modules/.cache/voxweaver/app-core.tsbuildinfo",
     "rootDir": "src",
+    "types": ["node"],
     "declaration": true,
     "declarationMap": true,
     "outDir": "dist",

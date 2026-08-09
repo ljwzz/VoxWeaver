@@ -117,6 +117,198 @@ test('creates a locked project, releases it, and reopens it from disk', async ()
   }
 });
 
+test('inspects an openable project without changing workspace files', async () => {
+  const parentDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-workspace-'));
+
+  try {
+    const workspace = createWorkspace();
+    const created = await workspace.createProject({
+      displayName: 'Inspection target',
+      parentDirectory,
+    });
+    await workspace.closeProject(created);
+    const manifestPath = join(created.projectDirectory, 'project.json');
+    const databasePath = join(created.projectDirectory, 'state/project.sqlite');
+    const before = {
+      backups: await readdir(join(created.projectDirectory, 'state/backups')),
+      database: await readFile(databasePath),
+      locks: await readdir(join(created.projectDirectory, 'state/locks')),
+      manifest: await readFile(manifestPath, 'utf8'),
+      stateEntries: await readdir(join(created.projectDirectory, 'state')),
+    };
+
+    const preview = await workspace.inspectProject({
+      projectDirectory: created.projectDirectory,
+    });
+
+    assert.deepEqual(preview, {
+      displayName: 'Inspection target',
+      layoutVersion: 2,
+      migrationRequired: false,
+      projectId: PROJECT_ID,
+      writeLock: {
+        recoveryAvailable: false,
+        status: 'available',
+      },
+    });
+    assert.equal(Object.hasOwn(preview, 'projectDirectory'), false);
+    assert.equal(JSON.stringify(preview).includes(parentDirectory), false);
+    assert.equal(Object.isFrozen(preview), true);
+    assert.equal(Object.isFrozen(preview.writeLock), true);
+    assert.deepEqual(
+      {
+        backups: await readdir(join(created.projectDirectory, 'state/backups')),
+        database: await readFile(databasePath),
+        locks: await readdir(join(created.projectDirectory, 'state/locks')),
+        manifest: await readFile(manifestPath, 'utf8'),
+        stateEntries: await readdir(join(created.projectDirectory, 'state')),
+      },
+      before,
+    );
+  } finally {
+    await rm(parentDirectory, { force: true, recursive: true });
+  }
+});
+
+test('reports write-lock recovery without taking over or backing up the lock', async () => {
+  const parentDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-workspace-'));
+
+  try {
+    const owner = createWorkspace({
+      generateProjectSessionId: () => SESSION_ID_A,
+      processId: 101,
+    });
+    const created = await owner.createProject({
+      displayName: 'Locked inspection',
+      parentDirectory,
+    });
+    const lockBefore = await readFile(
+      join(created.projectDirectory, PROJECT_WRITE_LOCK_PATH),
+      'utf8',
+    );
+    const liveContender = createWorkspace({
+      generateProjectSessionId: () => SESSION_ID_B,
+      isProcessAlive: () => true,
+      processId: 202,
+    });
+    const staleContender = createWorkspace({
+      generateProjectSessionId: () => SESSION_ID_C,
+      isProcessAlive: processId => processId !== 101,
+      processId: 303,
+    });
+
+    assert.deepEqual(
+      (await liveContender.inspectProject({
+        projectDirectory: created.projectDirectory,
+      })).writeLock,
+      { recoveryAvailable: false, status: 'locked' },
+    );
+    assert.deepEqual(
+      (await staleContender.inspectProject({
+        projectDirectory: created.projectDirectory,
+      })).writeLock,
+      { recoveryAvailable: true, status: 'recoverable' },
+    );
+    assert.equal(
+      await readFile(
+        join(created.projectDirectory, PROJECT_WRITE_LOCK_PATH),
+        'utf8',
+      ),
+      lockBefore,
+    );
+    assert.deepEqual(
+      await readdir(join(created.projectDirectory, 'state/backups')),
+      [],
+    );
+    await owner.closeProject(created);
+  } finally {
+    await rm(parentDirectory, { force: true, recursive: true });
+  }
+});
+
+test('does not recover a stale lock before migration confirmation', async () => {
+  const parentDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-workspace-'));
+
+  try {
+    const owner = createWorkspace({
+      generateProjectSessionId: () => SESSION_ID_A,
+      processId: 101,
+    });
+    const created = await owner.createProject({
+      displayName: 'Confirmation before recovery',
+      parentDirectory,
+    });
+    const manifestPath = join(created.projectDirectory, 'project.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.layoutVersion = 1;
+    await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`, 'utf8');
+    const lockPath = join(created.projectDirectory, PROJECT_WRITE_LOCK_PATH);
+    const lockBefore = await readFile(lockPath, 'utf8');
+    const contender = createWorkspace({
+      generateProjectSessionId: () => SESSION_ID_B,
+      isProcessAlive: processId => processId !== 101,
+      processId: 202,
+    });
+
+    await assert.rejects(
+      contender.openProject({
+        projectDirectory: created.projectDirectory,
+        recoverStaleWriteLock: true,
+      }),
+      error =>
+        error instanceof ProjectWorkspaceError
+        && error.code === 'PROJECT_MIGRATION_CONFIRMATION_REQUIRED',
+    );
+    assert.equal(await readFile(lockPath, 'utf8'), lockBefore);
+    assert.deepEqual(
+      await readdir(join(created.projectDirectory, 'state/backups')),
+      [],
+    );
+    await owner.closeProject(created);
+  } finally {
+    await rm(parentDirectory, { force: true, recursive: true });
+  }
+});
+
+test('previews layout migration without creating state or backups', async () => {
+  const parentDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-workspace-'));
+
+  try {
+    const workspace = createWorkspace();
+    const created = await workspace.createProject({
+      displayName: 'Migration inspection',
+      parentDirectory,
+    });
+    await workspace.closeProject(created);
+    const manifestPath = join(created.projectDirectory, 'project.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.layoutVersion = 1;
+    const legacyManifest = `${JSON.stringify(manifest)}\n`;
+    await writeFile(manifestPath, legacyManifest, 'utf8');
+    const databasePath = join(created.projectDirectory, 'state/project.sqlite');
+    await Promise.all([
+      rm(databasePath, { force: true }),
+      rm(`${databasePath}-shm`, { force: true }),
+      rm(`${databasePath}-wal`, { force: true }),
+    ]);
+
+    const preview = await workspace.inspectProject({
+      projectDirectory: created.projectDirectory,
+    });
+
+    assert.equal(preview.layoutVersion, 1);
+    assert.equal(preview.migrationRequired, true);
+    assert.equal(await readFile(manifestPath, 'utf8'), legacyManifest);
+    assert.deepEqual(
+      await readdir(join(created.projectDirectory, 'state/backups')),
+      [],
+    );
+    await assert.rejects(readFile(databasePath), error => error?.code === 'ENOENT');
+  } finally {
+    await rm(parentDirectory, { force: true, recursive: true });
+  }
+});
+
 test('publishes a write lock only after its temporary file is complete', async () => {
   const parentDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-workspace-'));
   let continuePublish;
@@ -1043,7 +1235,8 @@ test('migrates a layout-v1 project after backup and blocks read-only migration',
     const manifestPath = join(created.projectDirectory, 'project.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     manifest.layoutVersion = 1;
-    await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`, 'utf8');
+    const legacyManifest = `${JSON.stringify(manifest)}\n`;
+    await writeFile(manifestPath, legacyManifest, 'utf8');
     const databasePath = join(created.projectDirectory, 'state/project.sqlite');
     await Promise.all([
       rm(databasePath, { force: true }),
@@ -1053,7 +1246,27 @@ test('migrates a layout-v1 project after backup and blocks read-only migration',
 
     await assert.rejects(
       workspace.openProject({
+        projectDirectory: created.projectDirectory,
+      }),
+      error =>
+        error instanceof ProjectWorkspaceError
+        && error.code === 'PROJECT_MIGRATION_CONFIRMATION_REQUIRED',
+    );
+    assert.deepEqual(
+      await readdir(join(created.projectDirectory, 'state/locks')),
+      [],
+    );
+    assert.deepEqual(
+      await readdir(join(created.projectDirectory, 'state/backups')),
+      [],
+    );
+    assert.equal(await readFile(manifestPath, 'utf8'), legacyManifest);
+    await assert.rejects(readFile(databasePath), error => error?.code === 'ENOENT');
+
+    await assert.rejects(
+      workspace.openProject({
         accessMode: 'read-only',
+        confirmMigration: true,
         projectDirectory: created.projectDirectory,
       }),
       error =>
@@ -1062,6 +1275,7 @@ test('migrates a layout-v1 project after backup and blocks read-only migration',
     );
 
     const migrated = await workspace.openProject({
+      confirmMigration: true,
       projectDirectory: created.projectDirectory,
     });
     assert.equal(migrated.manifest.layoutVersion, 2);
@@ -1099,14 +1313,52 @@ test('backs up and migrates the recognized state schema v0', async () => {
       CREATED_AT,
     );
 
+    const databaseBeforeInspection = await readFile(databasePath);
+    const stateEntriesBeforeInspection = await readdir(
+      join(created.projectDirectory, 'state'),
+    );
+    const preview = await workspace.inspectProject({
+      projectDirectory: created.projectDirectory,
+    });
+    assert.equal(preview.migrationRequired, true);
+    assert.deepEqual(await readFile(databasePath), databaseBeforeInspection);
+    assert.deepEqual(
+      await readdir(join(created.projectDirectory, 'state')),
+      stateEntriesBeforeInspection,
+    );
+    assert.deepEqual(
+      await readdir(join(created.projectDirectory, 'state/backups')),
+      [],
+    );
+
+    await assert.rejects(
+      workspace.openProject({
+        projectDirectory: created.projectDirectory,
+      }),
+      error =>
+        error instanceof ProjectWorkspaceError
+        && error.code === 'PROJECT_MIGRATION_CONFIRMATION_REQUIRED',
+    );
+    assert.deepEqual(await readFile(databasePath), databaseBeforeInspection);
+    assert.deepEqual(
+      await readdir(join(created.projectDirectory, 'state/locks')),
+      [],
+    );
+    assert.deepEqual(
+      await readdir(join(created.projectDirectory, 'state/backups')),
+      [],
+    );
+
     await assert.rejects(
       workspace.openProject({
         accessMode: 'read-only',
+        confirmMigration: true,
         projectDirectory: created.projectDirectory,
       }),
       error => error?.code === 'PROJECT_STATE_MIGRATION_REQUIRED',
     );
     const migrated = await workspace.openProject({
+      confirmMigration: true,
       projectDirectory: created.projectDirectory,
     });
     assert.equal(

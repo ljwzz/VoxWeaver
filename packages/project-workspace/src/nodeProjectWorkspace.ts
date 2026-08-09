@@ -35,6 +35,8 @@ import {
   ensureProjectState,
   initializeProjectState,
 } from './nodeProjectStateStore.js';
+import { ProjectStateError } from './projectStateError.js';
+import { PROJECT_STATE_SCHEMA_VERSION } from './projectStateSchema.js';
 import { ProjectWorkspaceError } from './projectWorkspaceError.js';
 
 export interface CreateProjectWorkspaceCommand {
@@ -44,8 +46,37 @@ export interface CreateProjectWorkspaceCommand {
 
 export interface OpenProjectWorkspaceCommand {
   accessMode?: ProjectAccessMode;
+  confirmMigration?: boolean;
   projectDirectory: string;
   recoverStaleWriteLock?: boolean;
+}
+
+export interface InspectProjectWorkspaceCommand {
+  projectDirectory: string;
+}
+
+export type ProjectWorkspaceWriteLockStatus
+  = | 'available'
+    | 'locked'
+    | 'recoverable';
+
+export interface ProjectWorkspaceWriteLockInspection {
+  readonly recoveryAvailable: boolean;
+  readonly status: ProjectWorkspaceWriteLockStatus;
+}
+
+export interface ProjectWorkspaceInspectionPreview {
+  readonly displayName: string;
+  readonly layoutVersion: number;
+  readonly migrationRequired: boolean;
+  readonly projectId: string;
+  readonly writeLock: ProjectWorkspaceWriteLockInspection;
+}
+
+interface InspectedProjectWorkspace {
+  readonly manifest: ProjectManifest;
+  readonly preview: ProjectWorkspaceInspectionPreview;
+  readonly projectDirectory: string;
 }
 
 export interface NodeProjectWorkspaceOptions {
@@ -378,21 +409,20 @@ export class NodeProjectWorkspace {
   async openProject(
     command: OpenProjectWorkspaceCommand,
   ): Promise<ProjectContext> {
-    const projectDirectory = await resolveDirectory(
-      command.projectDirectory,
-      'PROJECT_DIRECTORY_INVALID',
-      'Project directory does not exist or is not a directory.',
-    );
-    let manifest = await validateProjectDirectory(projectDirectory);
-
-    if (basename(projectDirectory) !== manifest.directoryName) {
+    const accessMode = validateAccessMode(command.accessMode ?? 'read-write');
+    const inspected = await this.#inspectProjectWorkspace(command);
+    if (
+      inspected.preview.migrationRequired
+      && command.confirmMigration !== true
+    ) {
       throw new ProjectWorkspaceError(
-        'PROJECT_DIRECTORY_INVALID',
-        'Project directory name does not match its manifest.',
+        'PROJECT_MIGRATION_CONFIRMATION_REQUIRED',
+        'Project migration requires explicit confirmation.',
       );
     }
 
-    const accessMode = validateAccessMode(command.accessMode ?? 'read-write');
+    const projectDirectory = inspected.projectDirectory;
+    let manifest = inspected.manifest;
     const projectSessionId = validateProjectSessionId(
       this.#generateProjectSessionId(),
     );
@@ -435,6 +465,98 @@ export class NodeProjectWorkspace {
       projectDirectory,
       projectSessionId,
     };
+  }
+
+  async inspectProject(
+    command: InspectProjectWorkspaceCommand,
+  ): Promise<ProjectWorkspaceInspectionPreview> {
+    return (await this.#inspectProjectWorkspace(command)).preview;
+  }
+
+  async #inspectProjectWorkspace(
+    command: InspectProjectWorkspaceCommand,
+  ): Promise<InspectedProjectWorkspace> {
+    const projectDirectory = await resolveDirectory(
+      command.projectDirectory,
+      'PROJECT_DIRECTORY_INVALID',
+      'Project directory does not exist or is not a directory.',
+    );
+    const manifest = await validateProjectDirectory(projectDirectory);
+
+    if (basename(projectDirectory) !== manifest.directoryName) {
+      throw new ProjectWorkspaceError(
+        'PROJECT_DIRECTORY_INVALID',
+        'Project directory name does not match its manifest.',
+      );
+    }
+
+    const [migrationRequired, writeLock] = await Promise.all([
+      inspectProjectMigrationRequired(projectDirectory, manifest),
+      this.#inspectProjectWriteLock(projectDirectory, manifest),
+    ]);
+
+    const preview = Object.freeze({
+      displayName: manifest.displayName,
+      layoutVersion: manifest.layoutVersion,
+      migrationRequired,
+      projectId: manifest.projectId,
+      writeLock: Object.freeze(writeLock),
+    });
+    return { manifest, preview, projectDirectory };
+  }
+
+  async #inspectProjectWriteLock(
+    projectDirectory: string,
+    manifest: ProjectManifest,
+  ): Promise<ProjectWorkspaceWriteLockInspection> {
+    let snapshots: (ProjectWriteLockSnapshot | undefined)[];
+    try {
+      snapshots = await Promise.all([
+        readProjectWriteLock(
+          join(projectDirectory, PROJECT_WRITE_LOCK_RELATIVE_PATH),
+          'acquire',
+        ),
+        readProjectWriteLock(
+          join(projectDirectory, PROJECT_WRITE_MUTATION_RELATIVE_PATH),
+          'acquire',
+        ),
+      ]);
+    } catch (error) {
+      if (
+        error instanceof ProjectWorkspaceError
+        && error.code === 'PROJECT_WRITE_LOCK_INVALID'
+      ) {
+        return { recoveryAvailable: false, status: 'locked' };
+      }
+      throw error;
+    }
+    const presentSnapshots = snapshots.filter(
+      (snapshot): snapshot is ProjectWriteLockSnapshot => snapshot !== undefined,
+    );
+
+    try {
+      for (const snapshot of presentSnapshots)
+        assertWriteLockProject(snapshot.lock, manifest);
+    } catch (error) {
+      if (
+        error instanceof ProjectWorkspaceError
+        && error.code === 'PROJECT_WRITE_LOCK_INVALID'
+      ) {
+        return { recoveryAvailable: false, status: 'locked' };
+      }
+      throw error;
+    }
+
+    if (presentSnapshots.length === 0) {
+      return { recoveryAvailable: false, status: 'available' };
+    }
+
+    const recoveryAvailable = presentSnapshots.every(snapshot =>
+      this.#isStaleLocalOwner(snapshot.lock),
+    );
+    return recoveryAvailable
+      ? { recoveryAvailable: true, status: 'recoverable' }
+      : { recoveryAvailable: false, status: 'locked' };
   }
 
   async #acquireWriteLock(
@@ -676,6 +798,100 @@ interface PrepareProjectForOpenOptions {
   manifest: ProjectManifest;
   now: () => Date;
   projectDirectory: string;
+}
+
+async function inspectProjectMigrationRequired(
+  projectDirectory: string,
+  manifest: ProjectManifest,
+): Promise<boolean> {
+  if (manifest.layoutVersion !== PROJECT_LAYOUT_VERSION)
+    return true;
+
+  const databasePath = join(projectDirectory, 'state/project.sqlite');
+  let entry;
+  try {
+    entry = await lstat(databasePath);
+  } catch (error) {
+    if (isFileSystemError(error, 'ENOENT')) {
+      throw new ProjectStateError(
+        'PROJECT_STATE_INVALID',
+        'The project state database is missing or invalid.',
+        error,
+      );
+    }
+    throw error;
+  }
+
+  if (!entry.isFile() || entry.isSymbolicLink()) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      'The project state database is missing or invalid.',
+    );
+  }
+
+  const schemaVersion = await readProjectStateHeaderVersion(databasePath);
+  if (schemaVersion > PROJECT_STATE_SCHEMA_VERSION) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_SCHEMA_TOO_NEW',
+      `Project state schema ${schemaVersion} is newer than supported schema ${PROJECT_STATE_SCHEMA_VERSION}.`,
+    );
+  }
+
+  return schemaVersion < PROJECT_STATE_SCHEMA_VERSION;
+}
+
+const SQLITE_HEADER_MAGIC = 'SQLite format 3\0';
+const SQLITE_USER_VERSION_OFFSET = 60;
+
+// Opening the source with SQLite's read-only mode can still create WAL
+// shared-memory sidecars. Reading the header is intentionally conservative;
+// openProject performs the full state validation after confirmation and lock
+// acquisition.
+async function readProjectStateHeaderVersion(
+  databasePath: string,
+): Promise<number> {
+  let handle;
+  try {
+    handle = await open(
+      databasePath,
+      fileSystemConstants.O_RDONLY | fileSystemConstants.O_NOFOLLOW,
+    );
+  } catch (error) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      'The project state database is missing or invalid.',
+      error,
+    );
+  }
+
+  try {
+    const header = Buffer.alloc(100);
+    let read = 0;
+    while (read < header.length) {
+      const { bytesRead } = await handle.read(
+        header,
+        read,
+        header.length - read,
+      );
+      if (bytesRead === 0)
+        break;
+      read += bytesRead;
+    }
+
+    if (
+      read !== header.length
+      || header.subarray(0, 16).toString('ascii') !== SQLITE_HEADER_MAGIC
+    ) {
+      throw new ProjectStateError(
+        'PROJECT_STATE_INVALID',
+        'The project state database is not a valid SQLite database.',
+      );
+    }
+
+    return header.readUInt32BE(SQLITE_USER_VERSION_OFFSET);
+  } finally {
+    await handle.close();
+  }
 }
 
 async function prepareProjectForOpen(

@@ -11,7 +11,7 @@ M0 需要在每个项目目录内持久化 Artifact revision、依赖边、Task�
 ## 决策
 
 - 每个项目使用独立的 `state/project.sqlite`，首版状态 schema 为 `1`，项目目录 layout 为 `2`；两者独立版本化。
-- SQLite 适配器使用 Node.js `node:sqlite` 的 `DatabaseSync`、预编译语句和 `backup()`，运行基线固定为 Node.js `24.19.x`。
+- SQLite 适配器使用 Node.js `node:sqlite` 的 `DatabaseSync`、预编译语句和 `backup()`，开发与测试验证范围固定为 Node.js `24.18.x`；根 `engines` 接受 `>=24.18.0 <24.19.0`，`.nvmrc` 固定 `24.18.1`。
 - 连接禁用扩展加载和双引号字符串字面量，显式启用 defensive 模式与外键；写连接设置 `journal_mode=WAL`、`synchronous=FULL`、`busy_timeout=5000` 和 `trusted_schema=OFF`，只读连接额外启用 `query_only`。
 - 所有状态变更通过 `BEGIN IMMEDIATE` 显式事务提交；不允许嵌套事务。
 - 正式产物先在 `tmp/` 生成并校验，再移动到不可变 revision 目录，最后在单个数据库事务中登记 revision、依赖、活动版本、过期原因和 Task 成功状态。文件已移动但事务失败时保留为孤立 revision，由恢复扫描报告，不自动删除。
@@ -39,12 +39,17 @@ M0 需要在每个项目目录内持久化 Artifact revision、依赖边、Task�
 - 新项目直接创建 layout `2` 和 state schema `1`。
 - layout `1` 项目在写会话中备份旧 manifest，再创建或迁移状态库，最后原子替换 manifest。
 - 已识别的 state schema `0` 在迁移前使用 SQLite backup API 创建独立备份；未知旧 schema、过新 schema、项目 ID 不匹配或完整性检查失败时阻止打开。
-- Node.js 官方文档当前把 `node:sqlite` 标为 release candidate，因此该运行时版本必须由根包 `engines` 和 `.nvmrc` 固定，并由完整集成测试覆盖。
+- Node.js 官方文档当前把 `node:sqlite` 标为 release candidate，因此开发与测试版本必须由根包 `engines` 和 `.nvmrc` 固定，并由完整集成测试覆盖。
+- Electron 生产运行时不继承开发机的 Node.js 可执行文件。Electron 43.2.0 内置 Node.js 24.18.0；该版本的 `DatabaseSync`、`backup()` 和本项目连接选项仍须在打包后的 Core 内形成兼容证据，不能用 standalone Node.js 测试替代。
 
 ## 验证依据
 
-- Node.js `node:sqlite`、`DatabaseSync` 和 `backup()`：
-  https://nodejs.org/download/release/latest-v24.x/docs/api/sqlite.html
+- Node.js 24.18.0 `node:sqlite`、`DatabaseSync`、`defensive` 和 `backup()`：
+  https://nodejs.org/download/release/v24.18.0/docs/api/sqlite.html
+- Node.js 官方发布索引（含 24.18.1）：
+  https://nodejs.org/dist/index.json
+- Electron 43.2.0 内置运行时版本：
+  https://releases.electronjs.org/release/v43.2.0
 - SQLite 显式事务和 `BEGIN IMMEDIATE`：
   https://www.sqlite.org/lang_transaction.html
 - SQLite WAL、同步级别和连接 PRAGMA：

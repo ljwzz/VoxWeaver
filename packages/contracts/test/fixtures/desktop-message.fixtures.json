@@ -1,6 +1,6 @@
 [
   {
-    "name": "valid request with project context and unknown fields",
+    "name": "valid request with exact project context and unknown envelope fields",
     "kind": "request",
     "valid": true,
     "value": {
@@ -9,8 +9,7 @@
       "method": "project.getSummary",
       "projectContext": {
         "projectId": "project-1",
-        "projectSessionId": "session-1",
-        "futureContextField": true
+        "projectSessionId": "session-1"
       },
       "payload": {
         "includeArtifacts": true

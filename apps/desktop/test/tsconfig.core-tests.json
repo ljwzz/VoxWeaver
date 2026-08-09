@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "declaration": false,
+    "outDir": ".generated",
+    "sourceMap": false
+  },
+  "include": [
+    "../core/coreRuntime.ts",
+    "../core/runtimeCapabilityCheck.ts",
+    "../main/coreProcessManager.ts",
+    "../shared/desktopBridgeError.ts",
+    "../shared/coreTransport.ts"
+  ]
+}

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -12,6 +12,7 @@ const PROJECT_SESSION_IDS = [
   '348d6518-f31d-405a-bf8f-12e7c1b893c7',
   '6a4ab824-dcab-4682-aea3-9c8958642c1a',
   'ae181966-0313-465c-b378-fea05512de3f',
+  '1e478bf5-49cc-4c26-8ab0-0a2d9eb3ebaa',
 ];
 const INPUT_FINGERPRINT = 'a'.repeat(64);
 const OUTPUT_SCOPE = { kind: 'book', identifiers: ['book-1'] };
@@ -149,6 +150,32 @@ test('creates, closes, and reopens an empty project through app core', async () 
       'PROJECT_READ_ONLY',
     );
 
+    await appCore.closeProject();
+
+    const manifestPath = join(created.projectDirectory, 'project.json');
+    const legacyManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify({ ...legacyManifest, layoutVersion: 1 }, undefined, 2)}\n`,
+      'utf8',
+    );
+    assert.equal(
+      (await appCore.inspectProject({
+        projectDirectory: created.projectDirectory,
+      })).migrationRequired,
+      true,
+    );
+    await assert.rejects(
+      appCore.openProject({ projectDirectory: created.projectDirectory }),
+      error => error?.code === 'PROJECT_MIGRATION_CONFIRMATION_REQUIRED',
+    );
+
+    const migrated = await appCore.openProject({
+      confirmMigration: true,
+      projectDirectory: created.projectDirectory,
+    });
+    assert.equal(migrated.manifest.layoutVersion, 2);
+    assert.equal(migrated.projectSessionId, PROJECT_SESSION_IDS[3]);
     await appCore.closeProject();
   } finally {
     await rm(parentDirectory, { force: true, recursive: true });

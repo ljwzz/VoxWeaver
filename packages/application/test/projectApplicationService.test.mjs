@@ -45,6 +45,17 @@ const readOnlyProject = {
   projectSessionId: READ_ONLY_PROJECT_SESSION_ID,
 };
 
+const projectInspection = {
+  displayName: 'Next',
+  layoutVersion: 2,
+  migrationRequired: false,
+  projectId: NEXT_PROJECT_ID,
+  writeLock: {
+    recoveryAvailable: false,
+    status: 'available',
+  },
+};
+
 test('activates a created project and clears it after close', async () => {
   const closed = [];
   const service = new ProjectApplicationService({
@@ -136,6 +147,136 @@ test('isolates the active context from adapter and caller mutation', async () =>
     }),
     activeProject,
   );
+});
+
+test('inspects a target without replacing an active project', async () => {
+  const inspected = [];
+  const adapterInspection = {
+    ...projectInspection,
+    projectDirectory: '/projects/next',
+    writeLock: { ...projectInspection.writeLock },
+  };
+  const service = new ProjectApplicationService({
+    async closeProject() {},
+    async createProject() {
+      return project;
+    },
+    async inspectProject(command) {
+      inspected.push(command);
+      return adapterInspection;
+    },
+    async openProject() {
+      return nextProject;
+    },
+  });
+  const activeProject = await service.createProject({
+    displayName: 'Demo',
+    parentDirectory: '/projects',
+  });
+
+  const preview = await service.inspectProject({
+    projectDirectory: nextProject.projectDirectory,
+  });
+
+  assert.deepEqual(inspected, [{ projectDirectory: '/projects/next' }]);
+  assert.deepEqual(preview, projectInspection);
+  assert.notEqual(preview, adapterInspection);
+  assert.notEqual(preview.writeLock, adapterInspection.writeLock);
+  assert.equal(Object.hasOwn(preview, 'projectDirectory'), false);
+  assert.equal(Object.isFrozen(preview), true);
+  assert.equal(Object.isFrozen(preview.writeLock), true);
+  assert.equal(service.getActiveProject(), activeProject);
+
+  adapterInspection.displayName = 'Mutated';
+  adapterInspection.writeLock.status = 'locked';
+  assert.deepEqual(preview, projectInspection);
+});
+
+test('reports a stable error for a legacy workspace without inspection', async () => {
+  const service = new ProjectApplicationService({
+    async closeProject() {},
+    async createProject() {
+      return project;
+    },
+    async openProject() {
+      return project;
+    },
+  });
+
+  await assertApplicationError(
+    service.inspectProject({ projectDirectory: project.projectDirectory }),
+    'PROJECT_INSPECTION_UNAVAILABLE',
+  );
+});
+
+test('requires migration confirmation before calling workspace open', async () => {
+  let openCalls = 0;
+  const service = new ProjectApplicationService({
+    async closeProject() {},
+    async createProject() {
+      return project;
+    },
+    async inspectProject() {
+      return {
+        ...projectInspection,
+        migrationRequired: true,
+      };
+    },
+    async openProject() {
+      openCalls += 1;
+      return project;
+    },
+  });
+
+  await assertApplicationError(
+    service.openProject({ projectDirectory: project.projectDirectory }),
+    'PROJECT_MIGRATION_CONFIRMATION_REQUIRED',
+  );
+  assert.equal(openCalls, 0);
+  assert.equal(service.getActiveProject(), undefined);
+
+  const activeProject = await service.openProject({
+    confirmMigration: true,
+    projectDirectory: project.projectDirectory,
+  });
+  assert.equal(openCalls, 1);
+  assertProjectSnapshot(activeProject, project);
+});
+
+test('keeps the active project when switch migration is not confirmed', async () => {
+  let closeCalls = 0;
+  let openCalls = 0;
+  const service = new ProjectApplicationService({
+    async closeProject() {
+      closeCalls += 1;
+    },
+    async createProject() {
+      return project;
+    },
+    async inspectProject() {
+      return {
+        ...projectInspection,
+        migrationRequired: true,
+      };
+    },
+    async openProject() {
+      openCalls += 1;
+      return nextProject;
+    },
+  });
+  const activeProject = await service.createProject({
+    displayName: 'Demo',
+    parentDirectory: '/projects',
+  });
+
+  await assertApplicationError(
+    service.switchProject({ projectDirectory: nextProject.projectDirectory }),
+    'PROJECT_MIGRATION_CONFIRMATION_REQUIRED',
+  );
+
+  assert.equal(closeCalls, 0);
+  assert.equal(openCalls, 0);
+  assert.equal(service.getActiveProject(), activeProject);
 });
 
 test('rejects create and open when a project is already active', async () => {

@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxweaver.local/schemas/desktop-method-payload.schema.json",
+  "title": "VoxWeaver desktop method payload",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["method", "payload"],
+      "properties": {
+        "method": { "const": "app.getHealth" },
+        "payload": { "$ref": "#/$defs/emptyPayload" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "payload"],
+      "properties": {
+        "method": { "const": "dialog.selectDirectory" },
+        "payload": { "$ref": "#/$defs/selectDirectoryPayload" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "payload"],
+      "properties": {
+        "method": { "const": "project.create" },
+        "payload": { "$ref": "#/$defs/createProjectPayload" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "payload"],
+      "properties": {
+        "method": { "const": "project.open" },
+        "payload": { "$ref": "#/$defs/openProjectPayload" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "payload"],
+      "properties": {
+        "method": { "const": "project.switch" },
+        "payload": { "$ref": "#/$defs/openProjectPayload" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "payload"],
+      "properties": {
+        "method": { "const": "project.close" },
+        "payload": { "$ref": "#/$defs/emptyPayload" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "payload"],
+      "properties": {
+        "method": { "const": "project.getSummary" },
+        "payload": { "$ref": "#/$defs/emptyPayload" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "payload"],
+      "properties": {
+        "method": { "const": "project.listRecent" },
+        "payload": { "$ref": "#/$defs/emptyPayload" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "payload"],
+      "properties": {
+        "method": { "const": "project.removeRecent" },
+        "payload": { "$ref": "#/$defs/removeRecentProjectPayload" }
+      },
+      "additionalProperties": true
+    }
+  ],
+  "$defs": {
+    "emptyPayload": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "selectDirectoryPayload": {
+      "type": "object",
+      "required": ["purpose"],
+      "properties": {
+        "purpose": {
+          "enum": ["create-project-parent", "open-project", "switch-project"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "createProjectPayload": {
+      "type": "object",
+      "required": ["selectionToken", "displayName"],
+      "properties": {
+        "selectionToken": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "openProjectPayload": {
+      "type": "object",
+      "properties": {
+        "selectionToken": { "type": "string", "minLength": 1 },
+        "recentProjectId": { "type": "string", "minLength": 1 },
+        "accessMode": { "enum": ["read-write", "read-only"] },
+        "confirmMigration": { "type": "boolean" },
+        "recoverStaleWriteLock": { "type": "boolean" }
+      },
+      "oneOf": [
+        {
+          "required": ["selectionToken"],
+          "not": { "required": ["recentProjectId"] }
+        },
+        {
+          "required": ["recentProjectId"],
+          "not": { "required": ["selectionToken"] }
+        }
+      ],
+      "additionalProperties": true
+    },
+    "removeRecentProjectPayload": {
+      "type": "object",
+      "required": ["projectId"],
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    }
+  }
+}

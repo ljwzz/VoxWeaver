@@ -6,7 +6,7 @@ VoxWeaver 是面向长篇小说和其他叙事文本的 Electron 桌面端多角
 
 - 当前仓库已完成产品计划、阶段计划和 Monorepo 工具链基线；
 - M0 项目基础设施已完成并验证：项目目录、读写会话、状态库、核心记录、Task/StageRun、产物版本、依赖、增量过期和恢复端口可运行；
-- 阶段 00 仍需交付 Electron 项目页、最近项目入口和 Main/Preload/Renderer/Core 跨进程基础传输与接线；阶段 01～11 仍为 `unverified`；
+- 阶段 00 已验证：Electron 项目页、最近项目入口和 Main/Preload/Renderer/Core 跨进程基础传输已接线，并通过未签名 macOS arm64 开发 `.app` 的纵向 E2E；ARCH-D01/D02 仍为 `open`，阶段 01～11 仍为 `unverified`；
 - 文档、目录或静态检查通过不代表产品功能已经实现；
 - 若早期实现位于其他目录或分支，必须先按阶段执行实现和数据迁移审计。
 
@@ -58,4 +58,4 @@ pnpm install
 pnpm run check
 ```
 
-阶段 00 的桌面入口、最近项目切片及 Main/Preload/Renderer/Core 跨进程基础传输与接线完成前不开始阶段 01。
+阶段 00 已完成。阶段 01 仅可按对应里程碑规格、Decision Gate 和任务卡的允许范围实施；未关闭的发布、签名和更新 Gate 不得据此推断为完成。

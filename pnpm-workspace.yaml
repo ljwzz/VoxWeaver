@@ -4,3 +4,8 @@ packages:
   - 'packages/**'
 
 shellEmulator: true
+nodeLinker: hoisted
+blockExoticSubdeps: false
+allowBuilds:
+  electron: true
+  esbuild: true

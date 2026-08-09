@@ -35,3 +35,5 @@
 - `desktop-request.schema.json`：Renderer 到 Main/Core 的版本化请求信封。
 - `desktop-response.schema.json`：Main/Core 到 Renderer 的成功或失败响应信封。
 - `desktop-event.schema.json`：Core 经 Main 转发到 Renderer 的版本化事件信封。
+- `desktop-method-payload.schema.json`：首批桌面方法名及其 payload 契约。
+- `desktop-method-result.schema.json`：首批桌面方法名及其 Renderer 可见结果契约。

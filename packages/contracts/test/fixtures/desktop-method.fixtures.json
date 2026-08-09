@@ -1,0 +1,382 @@
+[
+  {
+    "name": "app health empty payload",
+    "kind": "payload",
+    "method": "app.getHealth",
+    "valid": true,
+    "value": {}
+  },
+  {
+    "name": "directory selection payload preserves a future field",
+    "kind": "payload",
+    "method": "dialog.selectDirectory",
+    "valid": true,
+    "value": {
+      "purpose": "create-project-parent",
+      "futureField": { "enabled": true }
+    }
+  },
+  {
+    "name": "create project payload",
+    "kind": "payload",
+    "method": "project.create",
+    "valid": true,
+    "value": {
+      "selectionToken": "selection-1",
+      "displayName": "Sample"
+    }
+  },
+  {
+    "name": "open project by selection token",
+    "kind": "payload",
+    "method": "project.open",
+    "valid": true,
+    "value": {
+      "selectionToken": "selection-1",
+      "accessMode": "read-write",
+      "confirmMigration": true,
+      "recoverStaleWriteLock": true
+    }
+  },
+  {
+    "name": "open recent project read only",
+    "kind": "payload",
+    "method": "project.open",
+    "valid": true,
+    "value": {
+      "recentProjectId": "project-1",
+      "accessMode": "read-only"
+    }
+  },
+  {
+    "name": "switch to a recent project",
+    "kind": "payload",
+    "method": "project.switch",
+    "valid": true,
+    "value": {
+      "recentProjectId": "project-2"
+    }
+  },
+  {
+    "name": "close project empty payload",
+    "kind": "payload",
+    "method": "project.close",
+    "valid": true,
+    "value": {}
+  },
+  {
+    "name": "get project summary empty payload",
+    "kind": "payload",
+    "method": "project.getSummary",
+    "valid": true,
+    "value": {}
+  },
+  {
+    "name": "list recent projects empty payload",
+    "kind": "payload",
+    "method": "project.listRecent",
+    "valid": true,
+    "value": {}
+  },
+  {
+    "name": "remove recent project payload",
+    "kind": "payload",
+    "method": "project.removeRecent",
+    "valid": true,
+    "value": { "projectId": "project-1" }
+  },
+  {
+    "name": "reject unknown payload method",
+    "kind": "payload",
+    "method": "project.unknown",
+    "valid": false,
+    "value": {}
+  },
+  {
+    "name": "reject missing directory selection purpose",
+    "kind": "payload",
+    "method": "dialog.selectDirectory",
+    "valid": false,
+    "value": {}
+  },
+  {
+    "name": "reject unknown directory selection purpose",
+    "kind": "payload",
+    "method": "dialog.selectDirectory",
+    "valid": false,
+    "value": { "purpose": "export-project" }
+  },
+  {
+    "name": "reject create project without display name",
+    "kind": "payload",
+    "method": "project.create",
+    "valid": false,
+    "value": { "selectionToken": "selection-1" }
+  },
+  {
+    "name": "reject open project without a source",
+    "kind": "payload",
+    "method": "project.open",
+    "valid": false,
+    "value": { "accessMode": "read-write" }
+  },
+  {
+    "name": "reject open project with both sources",
+    "kind": "payload",
+    "method": "project.open",
+    "valid": false,
+    "value": {
+      "selectionToken": "selection-1",
+      "recentProjectId": "project-1"
+    }
+  },
+  {
+    "name": "reject switch project with a blank recent ID",
+    "kind": "payload",
+    "method": "project.switch",
+    "valid": false,
+    "value": { "recentProjectId": "" }
+  },
+  {
+    "name": "reject invalid project access mode",
+    "kind": "payload",
+    "method": "project.open",
+    "valid": false,
+    "value": {
+      "selectionToken": "selection-1",
+      "accessMode": "write-only"
+    }
+  },
+  {
+    "name": "reject close project null payload",
+    "kind": "payload",
+    "method": "project.close",
+    "valid": false,
+    "value": null
+  },
+  {
+    "name": "reject blank recent project ID",
+    "kind": "payload",
+    "method": "project.removeRecent",
+    "valid": false,
+    "value": { "projectId": "" }
+  },
+  {
+    "name": "reject extra app health result field",
+    "kind": "result",
+    "method": "app.getHealth",
+    "valid": false,
+    "value": {
+      "healthy": true,
+      "futureField": { "enabled": true }
+    }
+  },
+  {
+    "name": "canceled directory selection result",
+    "kind": "result",
+    "method": "dialog.selectDirectory",
+    "valid": true,
+    "value": { "canceled": true }
+  },
+  {
+    "name": "selected directory result",
+    "kind": "result",
+    "method": "dialog.selectDirectory",
+    "valid": true,
+    "value": {
+      "canceled": false,
+      "selectionToken": "selection-1",
+      "displayName": "Workspace",
+      "expiresAt": "2026-08-09T00:05:00.000Z"
+    }
+  },
+  {
+    "name": "created project summary result",
+    "kind": "result",
+    "method": "project.create",
+    "valid": true,
+    "value": {
+      "projectId": "project-1",
+      "projectSessionId": "session-1",
+      "displayName": "Sample",
+      "accessMode": "read-write",
+      "layoutVersion": 2
+    }
+  },
+  {
+    "name": "opened project summary result",
+    "kind": "result",
+    "method": "project.open",
+    "valid": true,
+    "value": {
+      "projectId": "project-1",
+      "projectSessionId": "session-2",
+      "displayName": "Sample",
+      "accessMode": "read-only",
+      "layoutVersion": 2
+    }
+  },
+  {
+    "name": "switched project summary result",
+    "kind": "result",
+    "method": "project.switch",
+    "valid": true,
+    "value": {
+      "projectId": "project-2",
+      "projectSessionId": "session-3",
+      "displayName": "Next",
+      "accessMode": "read-write",
+      "layoutVersion": 2
+    }
+  },
+  {
+    "name": "closed project null result",
+    "kind": "result",
+    "method": "project.close",
+    "valid": true,
+    "value": null
+  },
+  {
+    "name": "no active project summary result",
+    "kind": "result",
+    "method": "project.getSummary",
+    "valid": true,
+    "value": null
+  },
+  {
+    "name": "recent projects result with unavailable entry",
+    "kind": "result",
+    "method": "project.listRecent",
+    "valid": true,
+    "value": {
+      "projects": [
+        {
+          "projectId": "project-1",
+          "displayName": "Sample",
+          "lastOpenedAt": "2026-08-09T00:00:00.000Z",
+          "availability": "available"
+        },
+        {
+          "projectId": "project-2",
+          "displayName": "Missing",
+          "lastOpenedAt": "2026-08-08T00:00:00.000Z",
+          "availability": "unavailable"
+        }
+      ]
+    }
+  },
+  {
+    "name": "removed recent project result",
+    "kind": "result",
+    "method": "project.removeRecent",
+    "valid": true,
+    "value": { "removed": true }
+  },
+  {
+    "name": "reject unknown result method",
+    "kind": "result",
+    "method": "project.unknown",
+    "valid": false,
+    "value": null
+  },
+  {
+    "name": "reject unhealthy app result",
+    "kind": "result",
+    "method": "app.getHealth",
+    "valid": false,
+    "value": { "healthy": false }
+  },
+  {
+    "name": "reject selected directory without expiry",
+    "kind": "result",
+    "method": "dialog.selectDirectory",
+    "valid": false,
+    "value": {
+      "canceled": false,
+      "selectionToken": "selection-1",
+      "displayName": "Workspace"
+    }
+  },
+  {
+    "name": "reject selected directory with invalid expiry",
+    "kind": "result",
+    "method": "dialog.selectDirectory",
+    "valid": false,
+    "value": {
+      "canceled": false,
+      "selectionToken": "selection-1",
+      "displayName": "Workspace",
+      "expiresAt": "not-a-timestamp"
+    }
+  },
+  {
+    "name": "reject selected directory containing project directory",
+    "kind": "result",
+    "method": "dialog.selectDirectory",
+    "valid": false,
+    "value": {
+      "canceled": false,
+      "selectionToken": "selection-1",
+      "displayName": "Workspace",
+      "expiresAt": "2026-08-09T00:05:00.000Z",
+      "projectDirectory": "/private/projects/sample"
+    }
+  },
+  {
+    "name": "reject project summary containing project directory",
+    "kind": "result",
+    "method": "project.getSummary",
+    "valid": false,
+    "value": {
+      "projectId": "project-1",
+      "projectSessionId": "session-1",
+      "displayName": "Sample",
+      "accessMode": "read-write",
+      "layoutVersion": 2,
+      "projectDirectory": "/private/projects/sample"
+    }
+  },
+  {
+    "name": "reject recent project containing absolute path",
+    "kind": "result",
+    "method": "project.listRecent",
+    "valid": false,
+    "value": {
+      "projects": [{
+        "projectId": "project-1",
+        "displayName": "Sample",
+        "lastOpenedAt": "2026-08-09T00:00:00.000Z",
+        "availability": "available",
+        "absolutePath": "/private/projects/sample"
+      }]
+    }
+  },
+  {
+    "name": "reject invalid recent project timestamp",
+    "kind": "result",
+    "method": "project.listRecent",
+    "valid": false,
+    "value": {
+      "projects": [{
+        "projectId": "project-1",
+        "displayName": "Sample",
+        "lastOpenedAt": "today",
+        "availability": "available"
+      }]
+    }
+  },
+  {
+    "name": "reject non-null close result",
+    "kind": "result",
+    "method": "project.close",
+    "valid": false,
+    "value": {}
+  },
+  {
+    "name": "reject remove recent result without removed flag",
+    "kind": "result",
+    "method": "project.removeRecent",
+    "valid": false,
+    "value": {}
+  }
+]

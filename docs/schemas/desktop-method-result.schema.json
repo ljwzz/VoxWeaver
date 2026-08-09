@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxweaver.local/schemas/desktop-method-result.schema.json",
+  "title": "VoxWeaver desktop method result",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["method", "result"],
+      "properties": {
+        "method": { "const": "app.getHealth" },
+        "result": { "$ref": "#/$defs/appHealthResult" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "result"],
+      "properties": {
+        "method": { "const": "dialog.selectDirectory" },
+        "result": { "$ref": "#/$defs/selectDirectoryResult" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "result"],
+      "properties": {
+        "method": { "const": "project.create" },
+        "result": { "$ref": "#/$defs/projectSummaryDto" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "result"],
+      "properties": {
+        "method": { "const": "project.open" },
+        "result": { "$ref": "#/$defs/projectSummaryDto" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "result"],
+      "properties": {
+        "method": { "const": "project.switch" },
+        "result": { "$ref": "#/$defs/projectSummaryDto" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "result"],
+      "properties": {
+        "method": { "const": "project.close" },
+        "result": { "type": "null" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "result"],
+      "properties": {
+        "method": { "const": "project.getSummary" },
+        "result": {
+          "anyOf": [
+            { "$ref": "#/$defs/projectSummaryDto" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "result"],
+      "properties": {
+        "method": { "const": "project.listRecent" },
+        "result": { "$ref": "#/$defs/recentProjectListResult" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["method", "result"],
+      "properties": {
+        "method": { "const": "project.removeRecent" },
+        "result": { "$ref": "#/$defs/removeRecentProjectResult" }
+      },
+      "additionalProperties": true
+    }
+  ],
+  "$defs": {
+    "appHealthResult": {
+      "type": "object",
+      "required": ["healthy"],
+      "properties": {
+        "healthy": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "selectDirectoryResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["canceled"],
+          "properties": {
+            "canceled": { "const": true },
+            "projectDirectory": false,
+            "parentDirectory": false,
+            "absolutePath": false
+          },
+          "not": { "required": ["selectionToken"] },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["canceled", "selectionToken", "displayName", "expiresAt"],
+          "properties": {
+            "canceled": { "const": false },
+            "selectionToken": { "type": "string", "minLength": 1 },
+            "displayName": { "type": "string", "minLength": 1 },
+            "expiresAt": { "type": "string", "format": "date-time" },
+            "projectDirectory": false,
+            "parentDirectory": false,
+            "absolutePath": false
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "projectSummaryDto": {
+      "type": "object",
+      "required": [
+        "projectId",
+        "projectSessionId",
+        "displayName",
+        "accessMode",
+        "layoutVersion"
+      ],
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1 },
+        "projectSessionId": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 },
+        "accessMode": { "enum": ["read-write", "read-only"] },
+        "layoutVersion": { "type": "integer", "minimum": 1 },
+        "projectDirectory": false,
+        "parentDirectory": false,
+        "absolutePath": false
+      },
+      "additionalProperties": false
+    },
+    "recentProjectDto": {
+      "type": "object",
+      "required": ["projectId", "displayName", "lastOpenedAt", "availability"],
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 },
+        "lastOpenedAt": { "type": "string", "format": "date-time" },
+        "availability": { "enum": ["available", "unavailable"] },
+        "projectDirectory": false,
+        "parentDirectory": false,
+        "absolutePath": false
+      },
+      "additionalProperties": false
+    },
+    "recentProjectListResult": {
+      "type": "object",
+      "required": ["projects"],
+      "properties": {
+        "projects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/recentProjectDto" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "removeRecentProjectResult": {
+      "type": "object",
+      "required": ["removed"],
+      "properties": {
+        "removed": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
