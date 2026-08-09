@@ -7,6 +7,7 @@ import type {
 import type { CoreStateUpdate } from '../preload/index';
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import { decodeDesktopBridgeError } from '../shared/desktopBridgeError';
+import NovelImportReviewPanel from './features/novelImport/NovelImportReviewPanel.vue';
 
 type OpenOperation = 'open' | 'switch';
 type ConfirmationKind = 'migration' | 'write-lock-recovery';
@@ -515,6 +516,12 @@ function formatLastOpenedAt(value: string): string {
           </ul>
         </article>
       </section>
+
+      <NovelImportReviewPanel
+        v-if="currentProject"
+        :key="currentProject.projectSessionId"
+        :project="currentProject"
+      />
     </template>
   </main>
 </template>
