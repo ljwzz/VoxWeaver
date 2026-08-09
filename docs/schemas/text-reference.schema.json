@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxweaver.local/schemas/text-reference.schema.json",
+  "title": "VoxWeaver M1 text range map",
+  "type": "object",
+  "required": [
+    "documentType",
+    "schemaVersion",
+    "mapVersion",
+    "processorId",
+    "processorVersion",
+    "inputRevision",
+    "outputRevision",
+    "segments"
+  ],
+  "properties": {
+    "documentType": {
+      "const": "text-range-map"
+    },
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "mapVersion": {
+      "const": "m1-text-range-map-v1"
+    },
+    "processorId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "processorVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputRevision": {
+      "$ref": "#/$defs/textRevisionRefV1"
+    },
+    "outputRevision": {
+      "$ref": "#/$defs/textRevisionRefV1"
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/textRangeMapSegmentV1"
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "textRevisionRefV1": {
+      "type": "object",
+      "required": [
+        "textRevisionId",
+        "textLayer",
+        "contentHash",
+        "byteLength"
+      ],
+      "properties": {
+        "textRevisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "textLayer": {
+          "type": "string",
+          "enum": [
+            "raw",
+            "canonical",
+            "normalized"
+          ]
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "textRangeV1": {
+      "type": "object",
+      "required": [
+        "textRevisionId",
+        "textLayer",
+        "offsetUnit",
+        "startByte",
+        "endByte"
+      ],
+      "properties": {
+        "textRevisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "textLayer": {
+          "type": "string",
+          "enum": [
+            "raw",
+            "canonical",
+            "normalized"
+          ]
+        },
+        "offsetUnit": {
+          "const": "utf8-byte"
+        },
+        "startByte": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "endByte": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "textRangeMapSegmentV1": {
+      "type": "object",
+      "required": [
+        "segmentIndex",
+        "operation",
+        "inputRange",
+        "outputRange",
+        "ruleId",
+        "ruleVersion",
+        "beforeContentHash",
+        "afterContentHash"
+      ],
+      "properties": {
+        "segmentIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "identity",
+            "replace",
+            "delete",
+            "insert"
+          ]
+        },
+        "inputRange": {
+          "$ref": "#/$defs/textRangeV1"
+        },
+        "outputRange": {
+          "$ref": "#/$defs/textRangeV1"
+        },
+        "ruleId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ruleVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "beforeContentHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "afterContentHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "textRangeMapRequestV1": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "mapVersion",
+        "direction",
+        "range"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "mapVersion": {
+          "const": "m1-text-range-map-v1"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "input-to-output",
+            "output-to-input"
+          ]
+        },
+        "range": {
+          "$ref": "#/$defs/textRangeV1"
+        },
+        "cursorBias": {
+          "type": "string",
+          "enum": [
+            "before",
+            "after"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "textRangeMappedFragmentV1": {
+      "type": "object",
+      "required": [
+        "mappingKind",
+        "segmentIndexes",
+        "sourceRange",
+        "targetRange"
+      ],
+      "properties": {
+        "mappingKind": {
+          "type": "string",
+          "enum": [
+            "cursor",
+            "identity",
+            "replace"
+          ]
+        },
+        "segmentIndexes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "sourceRange": {
+          "$ref": "#/$defs/textRangeV1"
+        },
+        "targetRange": {
+          "$ref": "#/$defs/textRangeV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "textRangeUnmappableFragmentV1": {
+      "type": "object",
+      "required": [
+        "operation",
+        "segmentIndex",
+        "sourceRange",
+        "targetRange",
+        "reason"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "replace",
+            "delete",
+            "insert"
+          ]
+        },
+        "segmentIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sourceRange": {
+          "$ref": "#/$defs/textRangeV1"
+        },
+        "targetRange": {
+          "$ref": "#/$defs/textRangeV1"
+        },
+        "reason": {
+          "const": "range_unmappable"
+        }
+      },
+      "additionalProperties": false
+    },
+    "textRangeMapResultV1": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "mapVersion",
+        "direction",
+        "requestedRange",
+        "mappedFragments",
+        "unmappableFragments"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "mapVersion": {
+          "const": "m1-text-range-map-v1"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "input-to-output",
+            "output-to-input"
+          ]
+        },
+        "requestedRange": {
+          "$ref": "#/$defs/textRangeV1"
+        },
+        "mappedFragments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/textRangeMappedFragmentV1"
+          }
+        },
+        "unmappableFragments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/textRangeUnmappableFragmentV1"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
