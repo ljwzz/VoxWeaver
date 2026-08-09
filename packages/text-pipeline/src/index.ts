@@ -94,5 +94,18 @@ export {
   restoreCanonicalTextFromNormalizationV1,
 } from './normalizer.js';
 
+export type {
+  DetectScenesInputV1,
+  DetectScenesOptionsV1,
+  SceneBoundaryReviewV1,
+} from './sceneDetector.js';
+export {
+  detectScenesV1,
+  SCENE_BOUNDARY_RULE_VERSION,
+  SCENE_DETECTOR_PROCESSOR_ID,
+  SCENE_DETECTOR_PROCESSOR_VERSION,
+  SceneDetectionError,
+} from './sceneDetector.js';
+
 export { TextTransformValidationError } from './textTransform.js';
 export { DocumentBlockIndexValidationError } from '@voxweaver/novel-domain';

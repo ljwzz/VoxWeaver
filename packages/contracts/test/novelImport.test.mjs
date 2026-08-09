@@ -14,6 +14,7 @@ import {
   parseChapterIndexV1,
   parseImportedNovelV1,
   parseNovelImportDocumentV1,
+  parseSceneIndexV1,
 } from '../dist/index.js';
 
 const SOURCE_ASSET_ID = '11111111-1111-4111-8111-111111111111';
@@ -25,6 +26,9 @@ const BLOCK_ID_2 = '66666666-6666-4666-8666-666666666666';
 const CANDIDATE_ID = '77777777-7777-4777-8777-777777777777';
 const CHAPTER_ID = '88888888-8888-4888-8888-888888888888';
 const ISSUE_ID = '99999999-9999-4999-8999-999999999999';
+const SCENE_BOUNDARY_CANDIDATE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const SCENE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const SCENE_ID_2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
 const RAW_TEXT = '正文';
@@ -190,17 +194,111 @@ function chapterIndex(overrides = {}) {
   };
 }
 
+function sceneBoundaryCandidate(overrides = {}) {
+  return {
+    sceneBoundaryCandidateId: SCENE_BOUNDARY_CANDIDATE_ID,
+    chapterId: CHAPTER_ID,
+    blockId: BLOCK_ID,
+    reasons: ['explicit_separator'],
+    evidenceRange: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 6),
+    proposedBoundary: textRange(CANONICAL_REVISION_ID, 'canonical', 6, 6),
+    appliedBoundary: textRange(CANONICAL_REVISION_ID, 'canonical', 6, 6),
+    sourceLocator: sourceLocator(),
+    ruleId: 'm2.scene-boundary.explicit-separator',
+    ruleVersion: '1',
+    evidence: ['full-block explicit separator'],
+    reviewStatus: 'not_required',
+    ...overrides,
+  };
+}
+
+function sceneIndex(overrides = {}) {
+  const boundary = sceneBoundaryCandidate();
+  return {
+    documentType: 'scene-index',
+    schemaVersion: NOVEL_IMPORT_SCHEMA_VERSION,
+    sourceAssetId: SOURCE_ASSET_ID,
+    sourceHash: RAW_HASH,
+    processorId: 'scene-detector',
+    processorVersion: '1.0.0',
+    textRevision: textRevision(CANONICAL_REVISION_ID, 'canonical', 20),
+    candidates: [boundary],
+    scenes: [
+      {
+        sceneId: SCENE_ID,
+        chapterId: CHAPTER_ID,
+        order: 0,
+        range: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 6),
+        blockReferences: [{
+          blockId: BLOCK_ID,
+          range: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 6),
+          sourceLocator: sourceLocator(),
+        }],
+      },
+      {
+        sceneId: SCENE_ID_2,
+        chapterId: CHAPTER_ID,
+        order: 1,
+        range: textRange(CANONICAL_REVISION_ID, 'canonical', 6, 20),
+        startBoundaryCandidateId: boundary.sceneBoundaryCandidateId,
+        blockReferences: [{
+          blockId: BLOCK_ID,
+          range: textRange(CANONICAL_REVISION_ID, 'canonical', 6, 20),
+          sourceLocator: sourceLocator(),
+        }],
+      },
+    ],
+    issues: [],
+    reviewStatus: 'not_required',
+    ...overrides,
+  };
+}
+
+function twoChapterSceneIndex(overrides = {}) {
+  return sceneIndex({
+    candidates: [],
+    scenes: [
+      {
+        sceneId: SCENE_ID,
+        chapterId: CHAPTER_ID,
+        order: 0,
+        range: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 10),
+        blockReferences: [{
+          blockId: BLOCK_ID,
+          range: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 10),
+          sourceLocator: sourceLocator(),
+        }],
+      },
+      {
+        sceneId: SCENE_ID_2,
+        chapterId: OTHER_SOURCE_ASSET_ID,
+        order: 0,
+        range: textRange(CANONICAL_REVISION_ID, 'canonical', 10, 20),
+        blockReferences: [{
+          blockId: BLOCK_ID_2,
+          range: textRange(CANONICAL_REVISION_ID, 'canonical', 10, 20),
+          sourceLocator: sourceLocator(),
+        }],
+      },
+    ],
+    issues: [],
+    reviewStatus: 'not_required',
+    ...overrides,
+  });
+}
+
 test('keeps the documented novel schema equal to the runtime schema', () => {
   assert.deepEqual(documentedNovelImportSchema, NOVEL_IMPORT_SCHEMA);
 });
 
-test('validates both documented aggregate variants with the shared text schema', () => {
+test('validates all documented aggregate variants with the shared text schema', () => {
   const ajv = new Ajv2020({ allErrors: true });
   ajv.addSchema(documentedTextSchema);
   const validate = ajv.compile(documentedNovelImportSchema);
 
   assert.equal(validate(importedNovel()), true);
   assert.equal(validate(chapterIndex()), true);
+  assert.equal(validate(sceneIndex()), true);
   assert.equal(validate({ ...importedNovel(), schemaVersion: 2 }), false);
   assert.equal(validate({ ...importedNovel(), documentType: 'chapter-index' }), false);
 });
@@ -663,6 +761,210 @@ test('requires complete, count-consistent, non-overlapping coverage', () => {
       NovelImportValidationError,
     );
   }
+});
+
+test('accepts one traceable Scene contract and dispatches the aggregate variant', () => {
+  const value = sceneIndex({ futureField: { retained: true } });
+  assert.equal(parseSceneIndexV1(value), value);
+  assert.equal(parseNovelImportDocumentV1(value), value);
+
+  const pending = sceneBoundaryCandidate({
+    reasons: ['time_change'],
+    proposedBoundary: textRange(CANONICAL_REVISION_ID, 'canonical', 5, 5),
+    appliedBoundary: undefined,
+    reviewStatus: 'pending',
+  });
+  const pendingValue = sceneIndex({
+    candidates: [pending],
+    scenes: [{
+      sceneId: SCENE_ID,
+      chapterId: CHAPTER_ID,
+      order: 0,
+      range: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 20),
+      blockReferences: [{
+        blockId: BLOCK_ID,
+        range: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 20),
+        sourceLocator: sourceLocator(),
+      }],
+    }],
+    issues: [{
+      issueId: ISSUE_ID,
+      code: 'scene_boundary_review_required',
+      severity: 'warning',
+      reviewStatus: 'pending',
+      message: 'Potential time change requires review',
+      chapterId: CHAPTER_ID,
+      blockId: BLOCK_ID,
+      sceneBoundaryCandidateId: pending.sceneBoundaryCandidateId,
+      textRange: pending.evidenceRange,
+      sourceLocator: sourceLocator(),
+    }],
+    reviewStatus: 'pending',
+  });
+  assert.equal(parseSceneIndexV1(pendingValue), pendingValue);
+});
+
+test('rejects invalid Scene UUIDs, cursors, ranges, and source provenance', () => {
+  const base = sceneIndex();
+  const invalid = [
+    sceneIndex({ scenes: [{ ...base.scenes[0], sceneId: 'scene-1' }, base.scenes[1]] }),
+    sceneIndex({
+      candidates: [sceneBoundaryCandidate({
+        proposedBoundary: textRange(CANONICAL_REVISION_ID, 'canonical', 5, 6),
+      })],
+    }),
+    sceneIndex({
+      scenes: [{
+        ...base.scenes[0],
+        range: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 3),
+      }, base.scenes[1]],
+    }),
+    sceneIndex({
+      scenes: [{
+        ...base.scenes[0],
+        blockReferences: [{
+          ...base.scenes[0].blockReferences[0],
+          range: textRange(CANONICAL_REVISION_ID, 'canonical', 4, 6),
+        }],
+      }, base.scenes[1]],
+    }),
+    sceneIndex({
+      candidates: [sceneBoundaryCandidate({
+        sourceLocator: sourceLocator({ sourceAssetId: OTHER_SOURCE_ASSET_ID }),
+      })],
+    }),
+  ];
+
+  for (const value of invalid)
+    assert.throws(() => parseSceneIndexV1(value), NovelImportValidationError);
+});
+
+test('requires applied boundaries to map one-to-one to non-first Scenes', () => {
+  const base = sceneIndex();
+  const invalid = [
+    sceneIndex({ scenes: [base.scenes[0]] }),
+    sceneIndex({
+      scenes: [base.scenes[0], {
+        ...base.scenes[1],
+        startBoundaryCandidateId: undefined,
+      }],
+    }),
+    sceneIndex({
+      scenes: [base.scenes[0], {
+        ...base.scenes[1],
+        range: textRange(CANONICAL_REVISION_ID, 'canonical', 7, 20),
+        blockReferences: [{
+          ...base.scenes[1].blockReferences[0],
+          range: textRange(CANONICAL_REVISION_ID, 'canonical', 7, 20),
+        }],
+      }],
+    }),
+  ];
+
+  for (const value of invalid)
+    assert.throws(() => parseSceneIndexV1(value), NovelImportValidationError);
+});
+
+test('requires exactly one review issue for each pending semantic boundary', () => {
+  const pending = sceneBoundaryCandidate({
+    reasons: ['dream_transition'],
+    proposedBoundary: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 3),
+    appliedBoundary: undefined,
+    reviewStatus: 'pending',
+  });
+  const base = sceneIndex();
+  assert.throws(
+    () => parseSceneIndexV1(sceneIndex({
+      candidates: [pending],
+      scenes: [{
+        ...base.scenes[0],
+        range: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 20),
+        blockReferences: [{
+          ...base.scenes[0].blockReferences[0],
+          range: textRange(CANONICAL_REVISION_ID, 'canonical', 3, 20),
+        }],
+      }],
+      issues: [],
+      reviewStatus: 'pending',
+    })),
+    NovelImportValidationError,
+  );
+});
+
+test('binds candidate evidence and locators to a block in the same Chapter', () => {
+  const crossChapterCandidate = sceneBoundaryCandidate({
+    chapterId: CHAPTER_ID,
+    blockId: BLOCK_ID_2,
+    reasons: ['time_change'],
+    evidenceRange: textRange(CANONICAL_REVISION_ID, 'canonical', 10, 12),
+    proposedBoundary: textRange(CANONICAL_REVISION_ID, 'canonical', 11, 11),
+    appliedBoundary: undefined,
+    reviewStatus: 'pending',
+  });
+  const invalidEvidence = sceneBoundaryCandidate({
+    evidenceRange: textRange(CANONICAL_REVISION_ID, 'canonical', 2, 6),
+    proposedBoundary: textRange(CANONICAL_REVISION_ID, 'canonical', 5, 5),
+  });
+  const invalidLocator = sceneBoundaryCandidate({
+    sourceLocator: sourceLocator({
+      lineRange: { lineBase: 1, startLine: 9, endLineExclusive: 10 },
+    }),
+  });
+
+  const invalid = [
+    twoChapterSceneIndex({ candidates: [crossChapterCandidate] }),
+    sceneIndex({ candidates: [invalidEvidence] }),
+    sceneIndex({ candidates: [invalidLocator] }),
+  ];
+  for (const value of invalid)
+    assert.throws(() => parseSceneIndexV1(value), NovelImportValidationError);
+});
+
+test('binds issue block references to the issue Chapter without a candidate', () => {
+  const invalid = [
+    twoChapterSceneIndex({
+      issues: [{
+        issueId: ISSUE_ID,
+        code: 'scene_block_review_required',
+        severity: 'warning',
+        reviewStatus: 'pending',
+        message: 'Synthetic issue',
+        chapterId: CHAPTER_ID,
+        blockId: BLOCK_ID_2,
+      }],
+      reviewStatus: 'pending',
+    }),
+    sceneIndex({
+      issues: [{
+        issueId: ISSUE_ID,
+        code: 'scene_block_review_required',
+        severity: 'warning',
+        reviewStatus: 'pending',
+        message: 'Synthetic issue',
+        chapterId: CHAPTER_ID,
+        blockId: BLOCK_ID,
+        textRange: textRange(CANONICAL_REVISION_ID, 'canonical', 2, 3),
+      }],
+      reviewStatus: 'pending',
+    }),
+    sceneIndex({
+      issues: [{
+        issueId: ISSUE_ID,
+        code: 'scene_block_review_required',
+        severity: 'warning',
+        reviewStatus: 'pending',
+        message: 'Synthetic issue',
+        chapterId: CHAPTER_ID,
+        blockId: BLOCK_ID,
+        sourceLocator: sourceLocator({
+          lineRange: { lineBase: 1, startLine: 9, endLineExclusive: 10 },
+        }),
+      }],
+      reviewStatus: 'pending',
+    }),
+  ];
+  for (const value of invalid)
+    assert.throws(() => parseSceneIndexV1(value), NovelImportValidationError);
 });
 
 function sha256Utf8(text) {

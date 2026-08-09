@@ -252,7 +252,78 @@ export interface ChapterIndexV1Fields {
 export type ChapterIndexV1
   = ChapterIndexV1Fields & Record<string, unknown>;
 
-export type NovelImportDocumentV1 = ChapterIndexV1 | ImportedNovelV1;
+export const SCENE_BOUNDARY_REASONS_V1 = [
+  'explicit_separator',
+  'time_change',
+  'location_change',
+  'viewpoint_change',
+  'event_change',
+  'memory_transition',
+  'dream_transition',
+] as const;
+
+export type SceneBoundaryReasonV1
+  = typeof SCENE_BOUNDARY_REASONS_V1[number];
+
+export interface SceneBoundaryCandidateV1 {
+  readonly sceneBoundaryCandidateId: string;
+  readonly chapterId: string;
+  readonly blockId: string;
+  readonly reasons: readonly SceneBoundaryReasonV1[];
+  readonly evidenceRange: TextRangeV1;
+  readonly proposedBoundary: TextRangeV1;
+  readonly appliedBoundary?: TextRangeV1;
+  readonly sourceLocator: TxtSourceLocatorV1;
+  readonly ruleId: string;
+  readonly ruleVersion: string;
+  readonly evidence: readonly string[];
+  readonly reviewStatus: ReviewStatus;
+}
+
+export interface SceneBlockReferenceV1 {
+  readonly blockId: string;
+  readonly range: TextRangeV1;
+  readonly sourceLocator: TxtSourceLocatorV1;
+}
+
+/** The only formal Scene representation in the public novel structure contract. */
+export interface SceneV1 {
+  readonly sceneId: string;
+  readonly chapterId: string;
+  readonly order: number;
+  readonly range: TextRangeV1;
+  readonly startBoundaryCandidateId?: string;
+  readonly blockReferences: readonly SceneBlockReferenceV1[];
+}
+
+export interface SceneIssueV1Fields extends ImportIssueV1Fields {
+  readonly chapterId: string;
+  readonly blockId?: string;
+  readonly sceneBoundaryCandidateId?: string;
+}
+
+export type SceneIssueV1
+  = SceneIssueV1Fields & Record<string, unknown>;
+
+export interface SceneIndexV1Fields {
+  readonly documentType: 'scene-index';
+  readonly schemaVersion: typeof NOVEL_IMPORT_SCHEMA_VERSION;
+  readonly sourceAssetId: string;
+  readonly sourceHash: string;
+  readonly processorId: string;
+  readonly processorVersion: string;
+  readonly textRevision: TextRevisionRefV1 & { readonly textLayer: 'canonical' };
+  readonly candidates: readonly SceneBoundaryCandidateV1[];
+  readonly scenes: readonly SceneV1[];
+  readonly issues: readonly SceneIssueV1[];
+  readonly reviewStatus: ReviewStatus;
+}
+
+export type SceneIndexV1
+  = SceneIndexV1Fields & Record<string, unknown>;
+
+export type NovelImportDocumentV1
+  = ChapterIndexV1 | ImportedNovelV1 | SceneIndexV1;
 
 export interface TxtSourceLocatorValidationContextV1 {
   readonly sourceAssetId: string;
@@ -696,14 +767,170 @@ const CHAPTER_INDEX_V1_SCHEMA = {
   additionalProperties: true,
 } as const;
 
+const SCENE_BOUNDARY_CANDIDATE_V1_SCHEMA = {
+  type: 'object',
+  required: [
+    'sceneBoundaryCandidateId',
+    'chapterId',
+    'blockId',
+    'reasons',
+    'evidenceRange',
+    'proposedBoundary',
+    'sourceLocator',
+    'ruleId',
+    'ruleVersion',
+    'evidence',
+    'reviewStatus',
+  ],
+  properties: {
+    sceneBoundaryCandidateId: UUID_V4,
+    chapterId: UUID_V4,
+    blockId: UUID_V4,
+    reasons: {
+      type: 'array',
+      minItems: 1,
+      uniqueItems: true,
+      items: {
+        type: 'string',
+        enum: SCENE_BOUNDARY_REASONS_V1,
+      },
+    },
+    evidenceRange: { $ref: TEXT_RANGE_V1_REF },
+    proposedBoundary: { $ref: TEXT_RANGE_V1_REF },
+    appliedBoundary: { $ref: TEXT_RANGE_V1_REF },
+    sourceLocator: { $ref: '#/$defs/txtSourceLocatorV1' },
+    ruleId: NON_EMPTY_STRING,
+    ruleVersion: NON_EMPTY_STRING,
+    evidence: {
+      type: 'array',
+      minItems: 1,
+      items: NON_EMPTY_STRING,
+    },
+    reviewStatus: REVIEW_STATUS_SCHEMA,
+  },
+  oneOf: [
+    {
+      properties: {
+        reviewStatus: {
+          type: 'string',
+          enum: ['not_required', 'approved'],
+        },
+      },
+      required: ['appliedBoundary'],
+    },
+    {
+      properties: {
+        reviewStatus: {
+          type: 'string',
+          enum: ['pending', 'rejected'],
+        },
+      },
+      not: { required: ['appliedBoundary'] },
+    },
+  ],
+  additionalProperties: false,
+} as const;
+
+const SCENE_BLOCK_REFERENCE_V1_SCHEMA = {
+  type: 'object',
+  required: ['blockId', 'range', 'sourceLocator'],
+  properties: {
+    blockId: UUID_V4,
+    range: { $ref: TEXT_RANGE_V1_REF },
+    sourceLocator: { $ref: '#/$defs/txtSourceLocatorV1' },
+  },
+  additionalProperties: false,
+} as const;
+
+const SCENE_V1_SCHEMA = {
+  type: 'object',
+  required: ['sceneId', 'chapterId', 'order', 'range', 'blockReferences'],
+  properties: {
+    sceneId: UUID_V4,
+    chapterId: UUID_V4,
+    order: SAFE_NON_NEGATIVE_INTEGER,
+    range: { $ref: TEXT_RANGE_V1_REF },
+    startBoundaryCandidateId: UUID_V4,
+    blockReferences: {
+      type: 'array',
+      minItems: 1,
+      items: { $ref: '#/$defs/sceneBlockReferenceV1' },
+    },
+  },
+  additionalProperties: false,
+} as const;
+
+const SCENE_ISSUE_V1_SCHEMA = {
+  type: 'object',
+  required: [
+    'issueId',
+    'code',
+    'severity',
+    'reviewStatus',
+    'message',
+    'chapterId',
+  ],
+  properties: {
+    ...IMPORT_ISSUE_V1_SCHEMA.properties,
+    chapterId: UUID_V4,
+    blockId: UUID_V4,
+    sceneBoundaryCandidateId: UUID_V4,
+  },
+  additionalProperties: true,
+} as const;
+
+const SCENE_INDEX_V1_SCHEMA = {
+  type: 'object',
+  required: [
+    'documentType',
+    'schemaVersion',
+    'sourceAssetId',
+    'sourceHash',
+    'processorId',
+    'processorVersion',
+    'textRevision',
+    'candidates',
+    'scenes',
+    'issues',
+    'reviewStatus',
+  ],
+  properties: {
+    documentType: { const: 'scene-index' },
+    schemaVersion: {
+      type: 'integer',
+      const: NOVEL_IMPORT_SCHEMA_VERSION,
+    },
+    sourceAssetId: UUID_V4,
+    sourceHash: SHA256,
+    processorId: NON_EMPTY_STRING,
+    processorVersion: NON_EMPTY_STRING,
+    textRevision: { $ref: TEXT_REVISION_REF_V1_REF },
+    candidates: {
+      type: 'array',
+      items: { $ref: '#/$defs/sceneBoundaryCandidateV1' },
+    },
+    scenes: {
+      type: 'array',
+      items: { $ref: '#/$defs/sceneV1' },
+    },
+    issues: {
+      type: 'array',
+      items: { $ref: '#/$defs/sceneIssueV1' },
+    },
+    reviewStatus: REVIEW_STATUS_SCHEMA,
+  },
+  additionalProperties: true,
+} as const;
+
 export const NOVEL_IMPORT_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'https://voxweaver.local/schemas/novel-import.schema.json',
-  title: 'VoxWeaver M1 novel import documents',
+  title: 'VoxWeaver novel import and structure documents',
   type: 'object',
   oneOf: [
     { $ref: '#/$defs/importedNovelV1' },
     { $ref: '#/$defs/chapterIndexV1' },
+    { $ref: '#/$defs/sceneIndexV1' },
   ],
   additionalProperties: true,
   $defs: {
@@ -721,6 +948,11 @@ export const NOVEL_IMPORT_SCHEMA = {
     coverageSegmentV1: COVERAGE_SEGMENT_V1_SCHEMA,
     coverageReportV1: COVERAGE_REPORT_V1_SCHEMA,
     chapterIndexV1: CHAPTER_INDEX_V1_SCHEMA,
+    sceneBoundaryCandidateV1: SCENE_BOUNDARY_CANDIDATE_V1_SCHEMA,
+    sceneBlockReferenceV1: SCENE_BLOCK_REFERENCE_V1_SCHEMA,
+    sceneV1: SCENE_V1_SCHEMA,
+    sceneIssueV1: SCENE_ISSUE_V1_SCHEMA,
+    sceneIndexV1: SCENE_INDEX_V1_SCHEMA,
   },
 } as const;
 
@@ -743,6 +975,8 @@ export function parseNovelImportDocumentV1(
   const document = value as NovelImportDocumentV1;
   if (document.documentType === 'chapter-index')
     return parseChapterIndexV1(document);
+  if (document.documentType === 'scene-index')
+    return parseSceneIndexV1(document);
   if (context === undefined)
     fail('ImportedNovel validation requires synchronous SHA-256 context functions');
   return parseImportedNovelV1(document, context);
@@ -968,6 +1202,295 @@ export function parseChapterIndexV1(value: unknown): ChapterIndexV1 {
   assertUniqueIssueIds(chapterIndex.issues, 'Chapter index issues');
   assertIssues(chapterIndex.issues, textRevision);
   return chapterIndex;
+}
+
+export function parseSceneIndexV1(value: unknown): SceneIndexV1 {
+  validateSchema(value, validators.sceneIndex, 'Scene index');
+  const sceneIndex = value as SceneIndexV1;
+  const textRevision = parseNovelTextRevision(sceneIndex.textRevision);
+  if (textRevision.textLayer !== 'canonical')
+    fail('Scene index textRevision must use the canonical text layer');
+
+  const candidates = new Map<string, SceneBoundaryCandidateV1>();
+  for (const candidate of sceneIndex.candidates) {
+    if (candidates.has(candidate.sceneBoundaryCandidateId)) {
+      fail(
+        `Scene index contains duplicate sceneBoundaryCandidateId ${candidate.sceneBoundaryCandidateId}`,
+      );
+    }
+    const evidenceRange = parseNovelTextRange(candidate.evidenceRange, {
+      revision: textRevision,
+    });
+    if (evidenceRange.startByte === evidenceRange.endByte)
+      fail('Scene boundary candidate evidenceRange must be non-empty');
+    const proposedBoundary = parseSceneBoundaryCursor(
+      candidate.proposedBoundary,
+      textRevision,
+      'proposedBoundary',
+    );
+    if (
+      proposedBoundary.startByte < evidenceRange.startByte
+      || proposedBoundary.startByte > evidenceRange.endByte
+    ) {
+      fail('Scene boundary candidate proposedBoundary must touch its evidenceRange');
+    }
+    if (candidate.appliedBoundary !== undefined) {
+      parseSceneBoundaryCursor(
+        candidate.appliedBoundary,
+        textRevision,
+        'appliedBoundary',
+      );
+    }
+    if (
+      candidate.reviewStatus === 'not_required'
+      && (
+        candidate.reasons.length !== 1
+        || candidate.reasons[0] !== 'explicit_separator'
+      )
+    ) {
+      fail('Only an explicit separator boundary may bypass review');
+    }
+    const locator = parseTxtSourceLocatorV1(candidate.sourceLocator);
+    assertSceneLocatorProvenance(locator, sceneIndex);
+    candidates.set(candidate.sceneBoundaryCandidateId, candidate);
+  }
+
+  const sceneIds = new Set<string>();
+  const chapterIds = new Set<string>();
+  const blockReferencesByChapter = new Map<
+    string,
+    Map<string, SceneBlockReferenceV1[]>
+  >();
+  const chapterSceneSpans = new Map<string, TextRangeV1>();
+  const usedBoundaryCandidateIds = new Set<string>();
+  const closedChapterIds = new Set<string>();
+  let activeChapterId: string | undefined;
+  let expectedChapterOrder = 0;
+  let previousSceneEnd = 0;
+
+  for (const scene of sceneIndex.scenes) {
+    if (sceneIds.has(scene.sceneId))
+      fail(`Scene index contains duplicate sceneId ${scene.sceneId}`);
+    sceneIds.add(scene.sceneId);
+
+    if (scene.chapterId !== activeChapterId) {
+      if (closedChapterIds.has(scene.chapterId))
+        fail('Scene entries for one chapter must form one contiguous group');
+      if (activeChapterId !== undefined)
+        closedChapterIds.add(activeChapterId);
+      activeChapterId = scene.chapterId;
+      expectedChapterOrder = 0;
+      chapterIds.add(scene.chapterId);
+    }
+    if (scene.order !== expectedChapterOrder)
+      fail('Scene order must be contiguous within each chapter');
+    expectedChapterOrder += 1;
+
+    const sceneRange = parseNovelTextRange(scene.range, { revision: textRevision });
+    if (sceneRange.startByte === sceneRange.endByte)
+      fail('Scene range must be non-empty');
+    if (sceneRange.startByte < previousSceneEnd)
+      fail('Scene ranges must be monotonic and non-overlapping');
+    previousSceneEnd = sceneRange.endByte;
+    const previousChapterSpan = chapterSceneSpans.get(scene.chapterId);
+    chapterSceneSpans.set(scene.chapterId, previousChapterSpan === undefined
+      ? sceneRange
+      : { ...previousChapterSpan, endByte: sceneRange.endByte });
+
+    if (scene.order === 0) {
+      if (scene.startBoundaryCandidateId !== undefined) {
+        fail('The first Scene in a chapter must not reference a start boundary candidate');
+      }
+    } else {
+      const boundaryCandidateId = scene.startBoundaryCandidateId;
+      if (boundaryCandidateId === undefined)
+        fail('Every non-first Scene must reference its applied start boundary candidate');
+      const candidate = candidates.get(boundaryCandidateId);
+      if (
+        candidate === undefined
+        || candidate.chapterId !== scene.chapterId
+        || candidate.appliedBoundary === undefined
+        || candidate.appliedBoundary.startByte !== sceneRange.startByte
+      ) {
+        fail('Scene start boundary candidate must resolve to its exact Scene start');
+      }
+      if (usedBoundaryCandidateIds.has(boundaryCandidateId))
+        fail('An applied Scene boundary candidate may start only one Scene');
+      usedBoundaryCandidateIds.add(boundaryCandidateId);
+    }
+
+    let referenceCursor = sceneRange.startByte;
+    const sceneBlockIds = new Set<string>();
+    for (const reference of scene.blockReferences) {
+      if (sceneBlockIds.has(reference.blockId))
+        fail('Scene blockReferences must not repeat a blockId within one Scene');
+      sceneBlockIds.add(reference.blockId);
+      const range = parseNovelTextRange(reference.range, { revision: textRevision });
+      if (range.startByte === range.endByte)
+        fail('Scene block reference range must be non-empty');
+      if (range.startByte !== referenceCursor || range.endByte > sceneRange.endByte) {
+        fail('Scene block references must exactly and contiguously cover the Scene range');
+      }
+      referenceCursor = range.endByte;
+      const locator = parseTxtSourceLocatorV1(reference.sourceLocator);
+      assertSceneLocatorProvenance(locator, sceneIndex);
+      const chapterBlocks = blockReferencesByChapter.get(scene.chapterId)
+        ?? new Map<string, SceneBlockReferenceV1[]>();
+      const references = chapterBlocks.get(reference.blockId) ?? [];
+      references.push(reference);
+      chapterBlocks.set(reference.blockId, references);
+      blockReferencesByChapter.set(scene.chapterId, chapterBlocks);
+    }
+    if (referenceCursor !== sceneRange.endByte)
+      fail('Scene block references must reach the end of the Scene range');
+  }
+
+  for (const candidate of candidates.values()) {
+    if (!chapterIds.has(candidate.chapterId))
+      fail('Scene boundary candidate must reference a chapter represented by Scenes');
+    const references = blockReferencesByChapter
+      .get(candidate.chapterId)
+      ?.get(candidate.blockId) ?? [];
+    const evidenceReference = references.find(reference =>
+      rangeContains(reference.range, candidate.evidenceRange)
+      && sameTxtSourceLocator(reference.sourceLocator, candidate.sourceLocator));
+    if (evidenceReference === undefined) {
+      fail(
+        'Scene boundary candidate must preserve a same-chapter block range and source locator',
+      );
+    }
+    const chapterSpan = chapterSceneSpans.get(candidate.chapterId);
+    if (
+      chapterSpan === undefined
+      || candidate.proposedBoundary.startByte <= chapterSpan.startByte
+      || candidate.proposedBoundary.startByte >= chapterSpan.endByte
+      || (
+        candidate.appliedBoundary !== undefined
+        && (
+          candidate.appliedBoundary.startByte <= chapterSpan.startByte
+          || candidate.appliedBoundary.startByte >= chapterSpan.endByte
+        )
+      )
+    ) {
+      fail('Scene boundary candidates must remain strictly inside their Chapter span');
+    }
+    if (
+      candidate.appliedBoundary !== undefined
+      && !usedBoundaryCandidateIds.has(candidate.sceneBoundaryCandidateId)
+    ) {
+      fail('Every applied Scene boundary candidate must start a Scene');
+    }
+  }
+
+  assertUniqueIssueIds(sceneIndex.issues, 'Scene index issues');
+  assertIssues(sceneIndex.issues, textRevision);
+  const pendingIssueCounts = new Map<string, number>();
+  for (const issue of sceneIndex.issues) {
+    if (!chapterIds.has(issue.chapterId))
+      fail('Scene issue must reference a chapter represented by Scenes');
+    if (issue.blockId !== undefined) {
+      const references = blockReferencesByChapter
+        .get(issue.chapterId)
+        ?.get(issue.blockId) ?? [];
+      const matchingReference = references.find(reference =>
+        (issue.textRange === undefined || rangeContains(reference.range, issue.textRange))
+        && (
+          issue.sourceLocator === undefined
+          || sameTxtSourceLocator(reference.sourceLocator, issue.sourceLocator)
+        ));
+      if (matchingReference === undefined) {
+        fail(
+          'Scene issue block range and source locator must resolve within its referenced chapter',
+        );
+      }
+    }
+    if (issue.textRange !== undefined)
+      parseNovelTextRange(issue.textRange, { revision: textRevision });
+    if (issue.sourceLocator !== undefined) {
+      const locator = parseTxtSourceLocatorV1(issue.sourceLocator);
+      assertSceneLocatorProvenance(locator, sceneIndex);
+    }
+    if (issue.sceneBoundaryCandidateId !== undefined) {
+      const candidate = candidates.get(issue.sceneBoundaryCandidateId);
+      if (candidate === undefined || candidate.chapterId !== issue.chapterId)
+        fail('Scene issue candidate reference must resolve within its chapter');
+      if (issue.blockId !== undefined && issue.blockId !== candidate.blockId)
+        fail('Scene issue blockId must match its boundary candidate');
+      if (issue.code === 'scene_boundary_review_required') {
+        pendingIssueCounts.set(
+          issue.sceneBoundaryCandidateId,
+          (pendingIssueCounts.get(issue.sceneBoundaryCandidateId) ?? 0) + 1,
+        );
+      }
+    }
+  }
+
+  for (const candidate of candidates.values()) {
+    const issueCount = pendingIssueCounts.get(candidate.sceneBoundaryCandidateId) ?? 0;
+    if (candidate.reviewStatus === 'pending' && issueCount !== 1) {
+      fail('Each pending Scene boundary candidate must have one review issue');
+    }
+    if (candidate.reviewStatus !== 'pending' && issueCount !== 0) {
+      fail('Resolved Scene boundary candidates must not retain pending review issues');
+    }
+  }
+
+  const hasPendingReview = sceneIndex.candidates.some(candidate =>
+    candidate.reviewStatus === 'pending')
+  || sceneIndex.issues.some(issue => issue.reviewStatus === 'pending');
+  if (
+    sceneIndex.reviewStatus !== (hasPendingReview ? 'pending' : 'not_required')
+  ) {
+    fail('Scene index reviewStatus must reflect its unresolved candidates and issues');
+  }
+  return sceneIndex;
+}
+
+function parseSceneBoundaryCursor(
+  value: unknown,
+  textRevision: TextRevisionRefV1,
+  fieldName: string,
+): TextRangeV1 {
+  const range = parseNovelTextRange(value, { revision: textRevision });
+  if (range.startByte !== range.endByte)
+    fail(`Scene boundary candidate ${fieldName} must be a zero-length cursor`);
+  return range;
+}
+
+function assertSceneLocatorProvenance(
+  locator: TxtSourceLocatorV1,
+  sceneIndex: SceneIndexV1,
+): void {
+  if (
+    locator.sourceAssetId !== sceneIndex.sourceAssetId
+    || locator.sourceContentHash !== sceneIndex.sourceHash
+  ) {
+    fail('Scene source locator provenance must match its Scene index');
+  }
+}
+
+function rangeContains(container: TextRangeV1, contained: TextRangeV1): boolean {
+  return container.textRevisionId === contained.textRevisionId
+    && container.textLayer === contained.textLayer
+    && container.offsetUnit === contained.offsetUnit
+    && container.startByte <= contained.startByte
+    && container.endByte >= contained.endByte;
+}
+
+function sameTxtSourceLocator(
+  left: TxtSourceLocatorV1,
+  right: TxtSourceLocatorV1,
+): boolean {
+  return left.sourceAssetId === right.sourceAssetId
+    && left.sourceContentHash === right.sourceContentHash
+    && left.sourceEncoding === right.sourceEncoding
+    && left.sourceByteRange.offsetUnit === right.sourceByteRange.offsetUnit
+    && left.sourceByteRange.startByte === right.sourceByteRange.startByte
+    && left.sourceByteRange.endByte === right.sourceByteRange.endByte
+    && sameTextRange(left.rawTextRange, right.rawTextRange)
+    && left.lineRange.lineBase === right.lineRange.lineBase
+    && left.lineRange.startLine === right.lineRange.startLine
+    && left.lineRange.endLineExclusive === right.lineRange.endLineExclusive;
 }
 
 function assertCoverageReport(
@@ -1225,6 +1748,10 @@ function createNovelImportValidators() {
     chapterIndex: getSchema(
       ajv,
       `${NOVEL_IMPORT_SCHEMA.$id}#/$defs/chapterIndexV1`,
+    ),
+    sceneIndex: getSchema(
+      ajv,
+      `${NOVEL_IMPORT_SCHEMA.$id}#/$defs/sceneIndexV1`,
     ),
   };
 }

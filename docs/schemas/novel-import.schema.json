@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voxweaver.local/schemas/novel-import.schema.json",
-  "title": "VoxWeaver M1 novel import documents",
+  "title": "VoxWeaver novel import and structure documents",
   "type": "object",
   "oneOf": [
     {
@@ -9,6 +9,9 @@
     },
     {
       "$ref": "#/$defs/chapterIndexV1"
+    },
+    {
+      "$ref": "#/$defs/sceneIndexV1"
     }
   ],
   "additionalProperties": true,
@@ -785,6 +788,349 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/importIssueV1"
+          }
+        },
+        "reviewStatus": {
+          "type": "string",
+          "enum": [
+            "not_required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "sceneBoundaryCandidateV1": {
+      "type": "object",
+      "required": [
+        "sceneBoundaryCandidateId",
+        "chapterId",
+        "blockId",
+        "reasons",
+        "evidenceRange",
+        "proposedBoundary",
+        "sourceLocator",
+        "ruleId",
+        "ruleVersion",
+        "evidence",
+        "reviewStatus"
+      ],
+      "properties": {
+        "sceneBoundaryCandidateId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "chapterId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "blockId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "explicit_separator",
+              "time_change",
+              "location_change",
+              "viewpoint_change",
+              "event_change",
+              "memory_transition",
+              "dream_transition"
+            ]
+          }
+        },
+        "evidenceRange": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "proposedBoundary": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "appliedBoundary": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "sourceLocator": {
+          "$ref": "#/$defs/txtSourceLocatorV1"
+        },
+        "ruleId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ruleVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reviewStatus": {
+          "type": "string",
+          "enum": [
+            "not_required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "reviewStatus": {
+              "type": "string",
+              "enum": [
+                "not_required",
+                "approved"
+              ]
+            }
+          },
+          "required": [
+            "appliedBoundary"
+          ]
+        },
+        {
+          "properties": {
+            "reviewStatus": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "rejected"
+              ]
+            }
+          },
+          "not": {
+            "required": [
+              "appliedBoundary"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "sceneBlockReferenceV1": {
+      "type": "object",
+      "required": [
+        "blockId",
+        "range",
+        "sourceLocator"
+      ],
+      "properties": {
+        "blockId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "range": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "sourceLocator": {
+          "$ref": "#/$defs/txtSourceLocatorV1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sceneV1": {
+      "type": "object",
+      "required": [
+        "sceneId",
+        "chapterId",
+        "order",
+        "range",
+        "blockReferences"
+      ],
+      "properties": {
+        "sceneId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "chapterId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "range": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "startBoundaryCandidateId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "blockReferences": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sceneBlockReferenceV1"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "sceneIssueV1": {
+      "type": "object",
+      "required": [
+        "issueId",
+        "code",
+        "severity",
+        "reviewStatus",
+        "message",
+        "chapterId"
+      ],
+      "properties": {
+        "issueId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "reviewStatus": {
+          "type": "string",
+          "enum": [
+            "not_required",
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "errorCode": {
+          "type": "string",
+          "enum": [
+            "NOVEL_IMPORT_UNSUPPORTED_FORMAT",
+            "NOVEL_IMPORT_INVALID_SOURCE",
+            "NOVEL_IMPORT_ENCODING_REQUIRED",
+            "NOVEL_IMPORT_STRUCTURE_INVALID",
+            "NOVEL_IMPORT_REVIEW_REQUIRED",
+            "NOVEL_IMPORT_STALE_SESSION",
+            "NOVEL_IMPORT_DEPENDENCY_UNAVAILABLE",
+            "NOVEL_IMPORT_RESOURCE_LIMIT_EXCEEDED",
+            "NOVEL_IMPORT_BUDGET_INVALID"
+          ]
+        },
+        "detailReason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "textRange": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRangeV1"
+        },
+        "sourceLocator": {
+          "$ref": "#/$defs/txtSourceLocatorV1"
+        },
+        "sourceEncoding": {
+          "type": "string",
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "utf-16le",
+            "utf-16be"
+          ]
+        },
+        "sourceByteRange": {
+          "$ref": "#/$defs/sourceByteRangeV1"
+        },
+        "chapterId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "blockId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "sceneBoundaryCandidateId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        }
+      },
+      "additionalProperties": true
+    },
+    "sceneIndexV1": {
+      "type": "object",
+      "required": [
+        "documentType",
+        "schemaVersion",
+        "sourceAssetId",
+        "sourceHash",
+        "processorId",
+        "processorVersion",
+        "textRevision",
+        "candidates",
+        "scenes",
+        "issues",
+        "reviewStatus"
+      ],
+      "properties": {
+        "documentType": {
+          "const": "scene-index"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "sourceAssetId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "processorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "processorVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "textRevision": {
+          "$ref": "https://voxweaver.local/schemas/text-reference.schema.json#/$defs/textRevisionRefV1"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sceneBoundaryCandidateV1"
+          }
+        },
+        "scenes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sceneV1"
+          }
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sceneIssueV1"
           }
         },
         "reviewStatus": {
