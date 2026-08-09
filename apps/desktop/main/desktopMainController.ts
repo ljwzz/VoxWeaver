@@ -152,6 +152,7 @@ export interface SelectedNovelSourceFile {
 export interface DesktopMainControllerOptions {
   readonly coreClient: DesktopCoreClient;
   readonly directoryPicker: DirectoryPicker;
+  readonly novelImportEventSessions?: NovelImportEventSessionRegistry;
   readonly novelSourceFilePicker?: NovelSourceFilePicker;
   readonly novelSourceSelections?: NovelSourceSelectionTokenRegistry;
   readonly selectionTokens?: SelectionTokenRegistry;
@@ -160,6 +161,18 @@ export interface DesktopMainControllerOptions {
    * The conservative default only supports tests and direct webContents IDs.
    */
   readonly windowIdFromIpcEvent?: (event: unknown) => number | undefined;
+}
+
+export interface NovelImportEventSessionRegistry {
+  readonly bindWindowSession: (
+    windowId: number,
+    session: {
+      readonly projectId: string;
+      readonly projectSessionId: string;
+    },
+  ) => void;
+  readonly clearWindowSession: (windowId: number) => void;
+  readonly suspendWindow: (windowId: number) => () => void;
 }
 
 export interface IpcMainLike {
@@ -186,6 +199,7 @@ export interface NovelImportIpcMainLike {
 export class DesktopMainController {
   readonly #coreClient: DesktopCoreClient;
   readonly #directoryPicker: DirectoryPicker;
+  readonly #novelImportEventSessions: NovelImportEventSessionRegistry | undefined;
   readonly #novelSourceFilePicker: NovelSourceFilePicker | undefined;
   readonly #novelSourceSelections: NovelSourceSelectionTokenRegistry;
   readonly #selectionTokens: SelectionTokenRegistry;
@@ -194,6 +208,7 @@ export class DesktopMainController {
   constructor(options: DesktopMainControllerOptions) {
     this.#coreClient = options.coreClient;
     this.#directoryPicker = options.directoryPicker;
+    this.#novelImportEventSessions = options.novelImportEventSessions;
     this.#novelSourceFilePicker = options.novelSourceFilePicker;
     this.#novelSourceSelections = options.novelSourceSelections
       ?? new NovelSourceSelectionTokenRegistry();
@@ -279,6 +294,7 @@ export class DesktopMainController {
     if (isWindowId(windowId)) {
       this.#selectionTokens.invalidateWindow(windowId);
       this.#novelSourceSelections.invalidateWindow(windowId);
+      safelyObserve(() => this.#novelImportEventSessions?.clearWindowSession(windowId));
     }
   }
 
@@ -549,6 +565,9 @@ export class DesktopMainController {
     const trustedContext = reservation
       ? toTrustedRequestContext(reservation.selection)
       : undefined;
+    const restoreEventSession = shouldSuspendEventSession(request.method)
+      ? safelySuspend(this.#novelImportEventSessions, windowId)
+      : undefined;
 
     let response: DesktopResponse;
     let outcome: SelectionTokenUseOutcome = 'failed';
@@ -566,7 +585,53 @@ export class DesktopMainController {
         this.#selectionTokens.settle(reservation, outcome);
     }
 
+    this.#settleEventSession(
+      windowId,
+      request.method as DesktopMethodName,
+      response,
+      restoreEventSession,
+    );
     return response;
+  }
+
+  #settleEventSession(
+    windowId: number,
+    method: DesktopMethodName,
+    response: DesktopResponse,
+    restoreEventSession: (() => void) | undefined,
+  ): void {
+    if (!response.ok) {
+      if (
+        method === DESKTOP_METHOD_NAMES.PROJECT_SWITCH
+        && response.error.code === 'PROJECT_SWITCH_OPEN_FAILED'
+      ) {
+        safelyObserve(() => this.#novelImportEventSessions?.clearWindowSession(windowId));
+      } else {
+        safelyObserve(restoreEventSession);
+      }
+      return;
+    }
+    if (method === DESKTOP_METHOD_NAMES.PROJECT_CLOSE) {
+      safelyObserve(() => this.#novelImportEventSessions?.clearWindowSession(windowId));
+      return;
+    }
+    if (
+      method !== DESKTOP_METHOD_NAMES.PROJECT_CREATE
+      && method !== DESKTOP_METHOD_NAMES.PROJECT_OPEN
+      && method !== DESKTOP_METHOD_NAMES.PROJECT_SWITCH
+    ) {
+      safelyObserve(restoreEventSession);
+      return;
+    }
+    const session = readProjectSessionResult(response.result);
+    if (!session) {
+      safelyObserve(restoreEventSession);
+      return;
+    }
+    safelyObserve(() => this.#novelImportEventSessions?.bindWindowSession(
+      windowId,
+      session,
+    ));
   }
 
   async #selectDirectory(
@@ -909,6 +974,49 @@ function desktopInputErrorCode(error: unknown): string {
     return 'DESKTOP_METHOD_NOT_FOUND';
   }
   return 'DESKTOP_PAYLOAD_INVALID';
+}
+
+function shouldSuspendEventSession(method: string): boolean {
+  return method === DESKTOP_METHOD_NAMES.PROJECT_CLOSE
+    || method === DESKTOP_METHOD_NAMES.PROJECT_SWITCH;
+}
+
+function safelySuspend(
+  registry: NovelImportEventSessionRegistry | undefined,
+  windowId: number,
+): (() => void) | undefined {
+  try {
+    return registry?.suspendWindow(windowId);
+  } catch {
+    return undefined;
+  }
+}
+
+function safelyObserve(observer: (() => unknown) | undefined): void {
+  try {
+    observer?.();
+  } catch {
+    // Event-session bookkeeping is auxiliary to the validated Core response.
+  }
+}
+
+function readProjectSessionResult(value: unknown): {
+  readonly projectId: string;
+  readonly projectSessionId: string;
+} | undefined {
+  if (!isRecord(value))
+    return undefined;
+  const projectId = value.projectId;
+  const projectSessionId = value.projectSessionId;
+  if (
+    typeof projectId !== 'string'
+    || !UUID_V4_PATTERN.test(projectId)
+    || typeof projectSessionId !== 'string'
+    || !UUID_V4_PATTERN.test(projectSessionId)
+  ) {
+    return undefined;
+  }
+  return { projectId, projectSessionId };
 }
 
 function desktopCoreFailureCode(error: unknown): string {

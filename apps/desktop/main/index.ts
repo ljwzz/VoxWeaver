@@ -21,6 +21,7 @@ import {
 import {
   DesktopMainController,
 } from './desktopMainController.js';
+import { DesktopNovelImportEventBridge } from './desktopNovelImportEventBridge.js';
 
 let coreManager: CoreProcessManager | undefined;
 let desktopController: DesktopMainController | undefined;
@@ -70,7 +71,10 @@ function createMainWindow(): BrowserWindow {
   return window;
 }
 
-function createDesktopController(manager: CoreProcessManager): DesktopMainController {
+function createDesktopController(
+  manager: CoreProcessManager,
+  eventBridge: DesktopNovelImportEventBridge,
+): DesktopMainController {
   return new DesktopMainController({
     coreClient: {
       async dispatch(request, trustedContext) {
@@ -100,6 +104,7 @@ function createDesktopController(manager: CoreProcessManager): DesktopMainContro
         };
       },
     },
+    novelImportEventSessions: eventBridge,
     novelSourceFilePicker: {
       async selectSourceFile({ windowId }) {
         const window = BrowserWindow.fromId(windowId);
@@ -248,10 +253,19 @@ if (!hasSingleInstanceLock) {
       launcher: createElectronCoreLauncher(),
       userDataDirectory: app.getPath('userData'),
     });
+    const eventBridge = new DesktopNovelImportEventBridge({
+      send(windowId, channel, envelope) {
+        const window = BrowserWindow.fromId(windowId);
+        if (!window || window !== mainWindow || window.isDestroyed())
+          return;
+        window.webContents.send(channel, envelope);
+      },
+    });
     coreManager = manager;
-    desktopController = createDesktopController(manager);
+    desktopController = createDesktopController(manager, eventBridge);
     desktopController.registerIpcHandlers(ipcMain);
     desktopController.registerNovelImportIpcHandlers(ipcMain);
+    manager.subscribeEvents(event => eventBridge.publish(event));
     manager.subscribe(() => publishCoreState());
     mainWindow = createMainWindow();
 

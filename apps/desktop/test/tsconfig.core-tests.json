@@ -10,8 +10,10 @@
   },
   "include": [
     "../core/coreRuntime.ts",
+    "../core/desktopNovelImportCoreDispatcher.ts",
     "../core/runtimeCapabilityCheck.ts",
     "../main/coreProcessManager.ts",
+    "../main/desktopNovelImportEventBridge.ts",
     "../shared/desktopBridgeError.ts",
     "../shared/coreTransport.ts"
   ]

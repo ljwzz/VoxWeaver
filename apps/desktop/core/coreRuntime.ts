@@ -1,6 +1,9 @@
-import type { DesktopTrustedRequestContext } from '@voxweaver/app-core';
+import type { DesktopNovelImportEventV1 } from '@voxweaver/contracts';
 
-import type { CoreMessagePort } from '../shared/coreTransport.js';
+import type {
+  CoreMessagePort,
+  CoreTrustedRequestContext,
+} from '../shared/coreTransport.js';
 import {
   AppCoreService,
   DesktopMessageHost,
@@ -8,16 +11,21 @@ import {
   NodeRecentProjectStore,
 } from '@voxweaver/app-core';
 import {
+  createCoreWireEvent,
   createCoreWireResponse,
   isCoreWireRequest,
   subscribeToCorePortMessages,
 } from '../shared/coreTransport.js';
+import { DesktopNovelImportCoreDispatcher } from './desktopNovelImportCoreDispatcher.js';
 
 interface CoreDispatcher {
   readonly dispatch: (
     request: unknown,
-    trustedContext?: DesktopTrustedRequestContext,
+    trustedContext?: CoreTrustedRequestContext,
   ) => Promise<unknown>;
+  readonly subscribe?: (
+    listener: (event: DesktopNovelImportEventV1) => void,
+  ) => () => void;
 }
 
 export interface CoreRuntimeOptions {
@@ -58,18 +66,27 @@ export function startCoreRuntime(options: CoreRuntimeOptions): CoreRuntime {
       );
     },
   );
+  const releaseEvents = dispatcher.subscribe?.((event) => {
+    options.port.postMessage(createCoreWireEvent(event));
+  }) ?? (() => {});
   host.start();
 
   return {
     stop() {
+      releaseEvents();
       host.stop();
       options.port.close?.();
     },
   };
 }
 
-function createDesktopDispatcher(userDataDirectory: string): DesktopRequestDispatcher {
+function createDesktopDispatcher(
+  userDataDirectory: string,
+): DesktopNovelImportCoreDispatcher {
   const core = new AppCoreService();
   const recentProjects = new NodeRecentProjectStore(userDataDirectory);
-  return new DesktopRequestDispatcher({ core, recentProjects });
+  return new DesktopNovelImportCoreDispatcher({
+    core,
+    fallback: new DesktopRequestDispatcher({ core, recentProjects }),
+  });
 }

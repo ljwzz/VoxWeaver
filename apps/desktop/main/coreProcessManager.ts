@@ -8,6 +8,7 @@ import {
 import {
   createCoreInitControlMessage,
   createCoreWireRequest,
+  isCoreWireEvent,
   isCoreWireResponse,
   subscribeToCorePortClose,
   subscribeToCorePortMessages,
@@ -98,6 +99,7 @@ interface CoreProcessSession {
  * unit-testable and reusable by other local transports.
  */
 export class CoreProcessManager {
+  readonly #eventListeners = new Set<(event: unknown) => void>();
   readonly #healthTimeoutMs: number;
   readonly #launcher: CoreProcessLauncher;
   readonly #listeners = new Set<(change: CoreProcessStatusChange) => void>();
@@ -136,6 +138,11 @@ export class CoreProcessManager {
     this.#listeners.add(listener);
     listener(this.#statusChange());
     return () => this.#listeners.delete(listener);
+  }
+
+  subscribeEvents(listener: (event: unknown) => void): () => void {
+    this.#eventListeners.add(listener);
+    return () => this.#eventListeners.delete(listener);
   }
 
   async start(): Promise<void> {
@@ -284,7 +291,20 @@ export class CoreProcessManager {
   }
 
   #handlePortMessage(session: CoreProcessSession, message: unknown): void {
-    if (this.#session !== session || !isCoreWireResponse(message))
+    if (this.#session !== session)
+      return;
+
+    if (isCoreWireEvent(message)) {
+      for (const listener of this.#eventListeners) {
+        try {
+          listener(message.event);
+        } catch {
+          // A Main-side consumer cannot interrupt the private response channel.
+        }
+      }
+      return;
+    }
+    if (!isCoreWireResponse(message))
       return;
 
     const pending = session.pending.get(message.messageId);

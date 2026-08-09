@@ -3,6 +3,7 @@
  * preload and may contain Main-validated filesystem context.
  */
 export const CORE_INIT_MESSAGE_TYPE = 'voxweaver.core.init.v1' as const;
+export const CORE_EVENT_MESSAGE_TYPE = 'voxweaver.core.event.v1' as const;
 export const CORE_REQUEST_MESSAGE_TYPE = 'voxweaver.core.request.v1' as const;
 export const CORE_RESPONSE_MESSAGE_TYPE = 'voxweaver.core.response.v1' as const;
 
@@ -12,9 +13,11 @@ export type DirectorySelectionPurpose
     | 'switch-project';
 
 export interface CoreTrustedRequestContext {
+  readonly originalName?: string;
   readonly projectDirectory?: string;
   readonly selectionPurpose?: DirectorySelectionPurpose;
   readonly selectionToken?: string;
+  readonly sourceFilePath?: string;
 }
 
 export interface CoreInitControlMessage {
@@ -33,6 +36,11 @@ export interface CoreWireResponse {
   readonly messageId: string;
   readonly response: unknown;
   readonly type: typeof CORE_RESPONSE_MESSAGE_TYPE;
+}
+
+export interface CoreWireEvent {
+  readonly event: unknown;
+  readonly type: typeof CORE_EVENT_MESSAGE_TYPE;
 }
 
 export interface CoreMessageEvent {
@@ -109,6 +117,13 @@ export function createCoreWireResponse(
   };
 }
 
+export function createCoreWireEvent(event: unknown): CoreWireEvent {
+  return {
+    event,
+    type: CORE_EVENT_MESSAGE_TYPE,
+  };
+}
+
 export function isCoreInitControlMessage(
   value: unknown,
 ): value is CoreInitControlMessage {
@@ -131,6 +146,12 @@ export function isCoreWireResponse(value: unknown): value is CoreWireResponse {
     && value.type === CORE_RESPONSE_MESSAGE_TYPE
     && isNonEmptyString(value.messageId)
     && hasOwn(value, 'response');
+}
+
+export function isCoreWireEvent(value: unknown): value is CoreWireEvent {
+  return isRecord(value)
+    && value.type === CORE_EVENT_MESSAGE_TYPE
+    && hasOwn(value, 'event');
 }
 
 export function subscribeToCorePortMessages(
@@ -185,9 +206,18 @@ function isCoreTrustedRequestContext(
   if (!isRecord(value))
     return false;
 
-  const { projectDirectory, selectionPurpose, selectionToken } = value;
+  const {
+    originalName,
+    projectDirectory,
+    selectionPurpose,
+    selectionToken,
+    sourceFilePath,
+  } = value;
   return (projectDirectory === undefined || typeof projectDirectory === 'string')
     && (selectionToken === undefined || typeof selectionToken === 'string')
+    && (originalName === undefined || typeof originalName === 'string')
+    && (sourceFilePath === undefined || typeof sourceFilePath === 'string')
+    && ((originalName === undefined) === (sourceFilePath === undefined))
     && (selectionPurpose === undefined || isDirectorySelectionPurpose(selectionPurpose));
 }
 
