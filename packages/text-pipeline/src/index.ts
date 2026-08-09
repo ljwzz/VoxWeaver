@@ -27,10 +27,35 @@ export {
 } from './chapterCandidateDetector.js';
 
 export type {
+  BuildChapterIndexInputV1,
+  BuildChapterIndexOptionsV1,
+  ChapterContentLengthPolicyV1,
+} from './chapterIndex.js';
+export {
+  buildChapterIndexV1,
+  CHAPTER_INDEX_PROCESSOR_ID,
+  CHAPTER_INDEX_PROCESSOR_VERSION,
+  ChapterIndexBuildError,
+} from './chapterIndex.js';
+
+export type {
   ChapterNumberSourceKindV1,
   ParsedChapterNumberV1,
 } from './chapterNumber.js';
 
 export { parseChapterNumberV1 } from './chapterNumber.js';
+
+export type {
+  ChapterSliceV1,
+  CoverageSliceV1,
+  SliceChapterIndexInputV1,
+} from './chapterSlicer.js';
+export {
+  ChapterSlicingError,
+  restoreCanonicalTextFromCoverageV1,
+  sliceChapterCoverageV1,
+  sliceChapterIndexV1,
+} from './chapterSlicer.js';
+
 export { TextTransformValidationError } from './textTransform.js';
 export { DocumentBlockIndexValidationError } from '@voxweaver/novel-domain';
