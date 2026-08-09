@@ -8,8 +8,11 @@ const filenameCaseOptions = {
   ignore: [
     '.*.config.*',
     'app-core',
+    'novel-domain',
+    'novel-import',
     'package.json',
     'project-workspace',
+    'text-pipeline',
     'workflow-core',
     '[a-z]+.[jt]s',
     '[a-z]+.d.ts',
