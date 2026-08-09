@@ -3,6 +3,14 @@ import test from 'node:test';
 
 import * as packageEntry from '../dist/index.js';
 
-test('loads the package skeleton without exposing a public API', () => {
-  assert.deepEqual(Object.keys(packageEntry), []);
+test('exposes only the M1-04 TXT adapter runtime API', () => {
+  assert.deepEqual(Object.keys(packageEntry), [
+    'NovelSourceAdapterError',
+    'TXT_IMPORT_PROCESSOR_ID',
+    'TXT_IMPORT_PROCESSOR_VERSION',
+    'TXT_SOURCE_ADAPTER_ID',
+    'TXT_SOURCE_ADAPTER_VERSION',
+    'TxtSourceAdapter',
+    'probeTxtDecoderCapabilities',
+  ]);
 });
