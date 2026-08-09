@@ -3,6 +3,11 @@ import test from 'node:test';
 
 import * as packageEntry from '../dist/index.js';
 
-test('loads the package skeleton without exposing a public API', () => {
-  assert.deepEqual(Object.keys(packageEntry), []);
+test('exposes only the M1-06 document block runtime API', () => {
+  assert.deepEqual(Object.keys(packageEntry), [
+    'DOCUMENT_BLOCK_INDEX_SCHEMA_VERSION',
+    'DocumentBlockIndexValidationError',
+    'alignDocumentBlockIndexV1',
+    'validateDocumentBlockIndexV1',
+  ]);
 });

@@ -1,3 +1,5 @@
+export { type BuildDocumentBlockIndexInputV1, buildDocumentBlockIndexV1 } from './blockIndex.js';
+
 export type {
   CanonicalizeRawTextInputV1,
   CanonicalizeRawTextResultV1,
@@ -10,5 +12,5 @@ export {
   CANONICALIZER_PROCESSOR_VERSION,
   canonicalizeRawTextV1,
 } from './canonicalizer.js';
-
 export { TextTransformValidationError } from './textTransform.js';
+export { DocumentBlockIndexValidationError } from '@voxweaver/novel-domain';
