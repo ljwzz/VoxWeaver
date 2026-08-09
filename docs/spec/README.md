@@ -1,7 +1,7 @@
 # VoxWeaver 阶段规格索引
 
 状态：正式阶段规格入口
-更新日期：2026-08-08
+更新日期：2026-08-09
 
 ## 1. 文档权威关系
 
@@ -37,11 +37,12 @@ https://www.rfc-editor.org/info/rfc2119/
 
 ## 2. 当前实现审计状态
 
-当前工作区已完成并验证 M0 后端基础设施：项目生命周期和会话、SQLite 状态库、公共记录、Task/StageRun、Artifact revision、依赖图、增量过期、迁移和恢复均有可执行源码与测试。因此：
+当前工作区已完成并验证 M0 后端基础设施和阶段 00 桌面纵向闭环：项目生命周期和会话、SQLite 状态库、公共记录、Task/StageRun、Artifact revision、依赖图、增量过期、迁移和恢复均有可执行源码与测试；Electron 项目页、最近项目入口以及 Renderer → Preload → Main → MessagePort → Core 链路已通过打包后开发应用 E2E。因此：
 
 - M0 项目基础设施记为 `verified`；
-- 阶段 00 的 Electron 项目页、最近项目入口和跨进程接线仍未完成，阶段整体保持 `in_progress`；
-- 阶段 01～11 仍记为 `unverified`；
+- 阶段 00 整体记为 `verified`；未签名 macOS arm64 开发 `.app` 的验证不代表 maker、签名、公证、发布、更新或回退已验收；
+- M1-G00 已关闭，但这只证明 M1 的阶段 00 输入门禁已满足，不代表 M1 已完成；
+- M1～M8 和阶段 01～11 仍记为 `unverified`；
 - 文档完成不代表功能已经实现；
 - 若已有实现位于其他目录或分支，必须先补充路径并逐阶段执行保留、适配、迁移、替换或废弃审计；
 - 在审计完成前，不得把早期原型直接标记为阶段完成。
@@ -82,7 +83,7 @@ https://www.rfc-editor.org/info/rfc2119/
 
 | 里程碑 | 执行规格 | 覆盖范围 | 当前入口门禁 |
 |---|---|---|---|
-| M1 | [小说导入执行规格](../milestones/M1.小说导入执行规格.md) | TXT 导入及 EPUB/Markdown 后续兼容边界 | 阶段 00 桌面入口与跨进程基线完成（M0 后端已 `verified`） |
+| M1 | [小说导入执行规格](../milestones/M1.小说导入执行规格.md) | TXT 导入及 EPUB/Markdown 后续兼容边界 | M1-G00 已关闭；继续遵守 M1 其他 Gate 与任务前置 |
 | M2 | [文本 AI 处理执行规格](../milestones/M2.文本AI处理执行规格.md) | 阶段 01 的 Scene/ProcessingSegment 桥接、02 文本校对、03 小说剧本化、04 角色注册表 | M1 完成，且 M0 后端证据无回退 |
 | M3 | [角色系统执行规格](../milestones/M3.角色系统执行规格.md) | 阶段 04、05 的角色稳定 ID、音色与 Scene 分配 | M2 完成 |
 | M4 | [语音生成执行规格](../milestones/M4.语音生成执行规格.md) | 阶段 06、07 的 spoken、发音与 TTS | M3 完成 |
