@@ -3,6 +3,13 @@ import test from 'node:test';
 
 import * as packageEntry from '../dist/index.js';
 
-test('loads the package skeleton without exposing a public API', () => {
-  assert.deepEqual(Object.keys(packageEntry), []);
+test('exposes only the M1-05 canonicalization runtime API', () => {
+  assert.deepEqual(Object.keys(packageEntry), [
+    'CANONICALIZER_PROCESSOR_ID',
+    'CANONICALIZER_PROCESSOR_VERSION',
+    'CANONICAL_RULE_IDS',
+    'CANONICAL_RULE_VERSION',
+    'TextTransformValidationError',
+    'canonicalizeRawTextV1',
+  ]);
 });
