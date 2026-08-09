@@ -24,6 +24,9 @@ import type {
   FailTaskCommand,
   PreviewArtifactImpactCommand,
   RecordReviewDecisionCommand,
+  SourceAssetCommitAttemptClassification,
+  SourceAssetCommitCommand,
+  SourceAssetCommitIntent,
 } from '@voxweaver/workflow-core';
 import type { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
@@ -43,14 +46,19 @@ import {
 } from '@voxweaver/contracts';
 import {
   canonicalizeJson,
+  classifySourceAssetCommitAttempt,
+  getSourceAssetCommitIntent,
+  parseSourceAssetCommitCommand,
   selectorsIntersect,
   sha256CanonicalJson,
 } from '@voxweaver/workflow-core';
 
 import { ProjectStateError } from './projectStateError.js';
 import {
+  PROJECT_STATE_METADATA_SCHEMA_SQL,
   PROJECT_STATE_SCHEMA_SQL,
   PROJECT_STATE_SCHEMA_VERSION,
+  SOURCE_ASSET_COMMIT_SCHEMA_SQL,
 } from './projectStateSchema.js';
 
 export const PROJECT_STATE_RELATIVE_PATH = 'state/project.sqlite';
@@ -82,6 +90,27 @@ export interface StoredRevisionPath {
   readonly revisionId: string;
 }
 
+export type SourceAssetCommitStatus
+  = | 'reserved'
+    | 'committed'
+    | 'recovery_required';
+
+export interface SourceAssetCommitMapping extends SourceAssetCommitIntent {
+  readonly idempotencyKey: string;
+  readonly sourceAssetId: string;
+  readonly targetRelativePath: string;
+  readonly status: SourceAssetCommitStatus;
+  readonly recoveryReason?: string;
+  readonly sourceAsset?: SourceAssetRecord;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ReserveSourceAssetCommitResult {
+  readonly classification: SourceAssetCommitAttemptClassification;
+  readonly mapping: SourceAssetCommitMapping;
+}
+
 interface SqlRow {
   readonly [key: string]: unknown;
 }
@@ -95,6 +124,13 @@ interface PropagationItem {
 }
 
 const DATABASE_TIMEOUT_MS = 5_000;
+const CURRENT_SCHEMA_MIGRATION_VERSIONS = [
+  PROJECT_STATE_SCHEMA_VERSION,
+] as const;
+const V1_TO_CURRENT_SCHEMA_MIGRATION_VERSIONS = [
+  1,
+  PROJECT_STATE_SCHEMA_VERSION,
+] as const;
 
 const ARTIFACT_RECORD_QUERY_BASE = `
   SELECT
@@ -109,6 +145,21 @@ const ARTIFACT_RECORD_QUERY_BASE = `
 `;
 const ARTIFACT_RECORD_QUERY = `${ARTIFACT_RECORD_QUERY_BASE}
   WHERE r.revision_id = ?
+`;
+
+const SOURCE_ASSET_COMMIT_QUERY_BASE = `
+  SELECT
+    commit_mapping.*,
+    source.source_asset_id AS stored_source_asset_id,
+    source.source_type AS stored_source_type,
+    source.original_name AS stored_original_name,
+    source.content_hash AS stored_content_hash,
+    source.relative_path AS stored_relative_path,
+    source.created_at AS stored_created_at,
+    source.created_by AS stored_created_by
+  FROM source_asset_commits AS commit_mapping
+  LEFT JOIN source_assets AS source
+    ON source.source_asset_id = commit_mapping.source_asset_id
 `;
 
 export async function initializeProjectState(
@@ -176,7 +227,7 @@ export async function ensureProjectState(
         );
       }
 
-      await migrateLegacyState(database, options);
+      await migrateProjectState(database, options);
     }
 
     assertDatabaseHealthy(database, options.projectId);
@@ -305,6 +356,227 @@ export class NodeProjectStateStore {
         record.createdAt,
       );
       return record;
+    });
+  }
+
+  reserveSourceAssetCommit(
+    command: SourceAssetCommitCommand,
+  ): ReserveSourceAssetCommitResult {
+    this.#assertWritable();
+    const parsedCommand = parseSourceAssetCommitCommand(command);
+    const intent = getSourceAssetCommitIntent(parsedCommand);
+
+    return this.#transaction(() => {
+      const existingByKey = this.getSourceAssetCommit(
+        parsedCommand.idempotencyKey,
+      );
+      if (existingByKey) {
+        return {
+          classification: classifySourceAssetCommitAttempt(
+            existingByKey.idempotencyKey,
+            sourceAssetCommitIntentFromMapping(existingByKey),
+            parsedCommand,
+          ),
+          mapping: existingByKey,
+        };
+      }
+
+      const existingByIdentityRow = this.#database.prepare(`
+        ${SOURCE_ASSET_COMMIT_QUERY_BASE}
+        WHERE commit_mapping.expected_content_hash = ?
+          AND commit_mapping.expected_byte_length = ?
+          AND commit_mapping.original_name = ?
+          AND commit_mapping.source_type = ?
+        LIMIT 1
+      `).get(
+        intent.expectedContentHash,
+        intent.expectedByteLength,
+        intent.originalName,
+        intent.sourceType,
+      ) as SqlRow | undefined;
+      if (existingByIdentityRow) {
+        const existingByIdentity = mapSourceAssetCommitRow(
+          existingByIdentityRow,
+        );
+        return {
+          classification: classifySourceAssetCommitAttempt(
+            existingByIdentity.idempotencyKey,
+            sourceAssetCommitIntentFromMapping(existingByIdentity),
+            parsedCommand,
+          ),
+          mapping: existingByIdentity,
+        };
+      }
+
+      const sourceAssetId = this.#generateId();
+      assertUuidV4(sourceAssetId, 'sourceAssetId');
+      const targetRelativePath = sourceAssetTargetRelativePath(
+        sourceAssetId,
+        intent.originalName,
+      );
+      const timestamp = this.#now().toISOString();
+      this.#database.prepare(`
+        INSERT INTO source_asset_commits(
+          idempotency_key, expected_content_hash, expected_byte_length,
+          original_name, source_type, created_by, source_asset_id,
+          target_relative_path, status, recovery_reason,
+          committed_source_asset_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'reserved', NULL, NULL, ?, ?)
+      `).run(
+        parsedCommand.idempotencyKey,
+        intent.expectedContentHash,
+        intent.expectedByteLength,
+        intent.originalName,
+        intent.sourceType,
+        intent.createdBy,
+        sourceAssetId,
+        targetRelativePath,
+        timestamp,
+        timestamp,
+      );
+      return {
+        classification: 'new',
+        mapping: this.getSourceAssetCommit(
+          parsedCommand.idempotencyKey,
+        ) as SourceAssetCommitMapping,
+      };
+    });
+  }
+
+  getSourceAssetCommit(
+    idempotencyKey: string,
+  ): SourceAssetCommitMapping | undefined {
+    this.#assertOpen();
+    assertNonEmptyStateString(idempotencyKey, 'idempotencyKey');
+    const row = this.#database.prepare(`
+      ${SOURCE_ASSET_COMMIT_QUERY_BASE}
+      WHERE commit_mapping.idempotency_key = ?
+    `).get(idempotencyKey) as SqlRow | undefined;
+    return row ? mapSourceAssetCommitRow(row) : undefined;
+  }
+
+  finalizeSourceAssetCommit(
+    idempotencyKey: string,
+    expectedByteLength: number,
+    record: SourceAssetRecord,
+  ): SourceAssetRecord {
+    this.#assertWritable();
+    assertNonEmptyStateString(idempotencyKey, 'idempotencyKey');
+    assertSourceAssetByteLength(expectedByteLength);
+    const parsedRecord = parseSourceAssetRecord(record);
+
+    return this.#transaction(() => {
+      const mapping = this.getSourceAssetCommit(idempotencyKey);
+      if (!mapping) {
+        throw new ProjectStateError(
+          'PROJECT_STATE_NOT_FOUND',
+          'The source asset commit reservation does not exist.',
+        );
+      }
+      assertSourceAssetMatchesCommit(
+        mapping,
+        expectedByteLength,
+        parsedRecord,
+      );
+
+      const existingRows = this.#database.prepare(`
+        SELECT * FROM source_assets
+        WHERE source_asset_id = ? OR relative_path = ?
+        ORDER BY source_asset_id
+      `).all(
+        mapping.sourceAssetId,
+        mapping.targetRelativePath,
+      ) as SqlRow[];
+      if (existingRows.length > 1) {
+        throw new ProjectStateError(
+          'PROJECT_STATE_CONFLICT',
+          'The reserved source asset ID and target belong to different records.',
+        );
+      }
+
+      let storedRecord: SourceAssetRecord;
+      if (existingRows.length === 0) {
+        this.#database.prepare(`
+          INSERT INTO source_assets(
+            source_asset_id, source_type, original_name, content_hash,
+            relative_path, created_at, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          parsedRecord.sourceAssetId,
+          parsedRecord.sourceType,
+          parsedRecord.originalName,
+          parsedRecord.contentHash,
+          parsedRecord.relativePath,
+          parsedRecord.createdAt,
+          parsedRecord.createdBy,
+        );
+        storedRecord = parsedRecord;
+      } else {
+        storedRecord = mapSourceAssetRow(existingRows[0] as SqlRow);
+        assertSourceAssetRecordsEqual(storedRecord, parsedRecord);
+      }
+
+      if (mapping.status === 'committed')
+        return storedRecord;
+
+      const timestamp = this.#now().toISOString();
+      const updated = this.#database.prepare(`
+        UPDATE source_asset_commits
+        SET status = 'committed', recovery_reason = NULL,
+            committed_source_asset_id = ?, updated_at = ?
+        WHERE idempotency_key = ?
+          AND status IN ('reserved', 'recovery_required')
+      `).run(mapping.sourceAssetId, timestamp, idempotencyKey);
+      if (Number(updated.changes) !== 1) {
+        throw new ProjectStateError(
+          'PROJECT_STATE_CONFLICT',
+          'The source asset commit cannot transition to committed.',
+        );
+      }
+      return storedRecord;
+    });
+  }
+
+  markSourceAssetCommitRecoveryRequired(
+    idempotencyKey: string,
+    reason: string,
+  ): SourceAssetCommitMapping {
+    this.#assertWritable();
+    assertNonEmptyStateString(idempotencyKey, 'idempotencyKey');
+    assertNonEmptyStateString(reason, 'recoveryReason');
+
+    return this.#transaction(() => {
+      const mapping = this.getSourceAssetCommit(idempotencyKey);
+      if (!mapping) {
+        throw new ProjectStateError(
+          'PROJECT_STATE_NOT_FOUND',
+          'The source asset commit reservation does not exist.',
+        );
+      }
+      if (mapping.recoveryReason && mapping.recoveryReason !== reason) {
+        throw new ProjectStateError(
+          'PROJECT_STATE_CONFLICT',
+          'The source asset commit recovery reason is already fixed.',
+        );
+      }
+      if (mapping.status === 'recovery_required')
+        return mapping;
+
+      const timestamp = this.#now().toISOString();
+      const updated = this.#database.prepare(`
+        UPDATE source_asset_commits
+        SET status = 'recovery_required', recovery_reason = ?,
+            committed_source_asset_id = NULL, updated_at = ?
+        WHERE idempotency_key = ?
+          AND status IN ('reserved', 'committed')
+      `).run(reason, timestamp, idempotencyKey);
+      if (Number(updated.changes) !== 1) {
+        throw new ProjectStateError(
+          'PROJECT_STATE_CONFLICT',
+          'The source asset commit cannot transition to recovery_required.',
+        );
+      }
+      return this.getSourceAssetCommit(idempotencyKey) as SourceAssetCommitMapping;
     });
   }
 
@@ -1423,15 +1695,40 @@ function createCurrentSchema(
       record.createdAt,
       record.updatedAt,
     );
-    database.prepare(
-      'INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)',
-    ).run(PROJECT_STATE_SCHEMA_VERSION, timestamp);
+    insertSchemaMigrationHistory(
+      database,
+      CURRENT_SCHEMA_MIGRATION_VERSIONS,
+      timestamp,
+    );
     database.exec(`PRAGMA user_version = ${PROJECT_STATE_SCHEMA_VERSION}; COMMIT`);
   } catch (error) {
     if (database.isTransaction)
       database.exec('ROLLBACK');
     throw error;
   }
+}
+
+async function migrateProjectState(
+  database: DatabaseSync,
+  options: OpenProjectStateOptions,
+): Promise<void> {
+  const version = readUserVersion(database);
+  if (version === PROJECT_STATE_SCHEMA_VERSION) {
+    assertDatabaseHealthy(database, options.projectId);
+    return;
+  }
+  if (version === 0) {
+    await migrateLegacyState(database, options);
+    return;
+  }
+  if (version === 1) {
+    await migrateStateV1ToV2(database, options);
+    return;
+  }
+  throw new ProjectStateError(
+    'PROJECT_STATE_INVALID',
+    `Project state schema ${version} is not recognized for migration.`,
+  );
 }
 
 async function migrateLegacyState(
@@ -1458,17 +1755,7 @@ async function migrateLegacyState(
     );
   }
 
-  const backupDirectory = join(options.projectDirectory, 'state/backups');
-  await mkdir(backupDirectory, { recursive: true });
-  const id = (options.generateId ?? randomUUID)();
-  const backupPath = join(backupDirectory, `project-v0-${id}.sqlite`);
-  await createPrivateFile(backupPath);
-  try {
-    await backup(database, backupPath);
-  } catch (error) {
-    await unlink(backupPath).catch(() => {});
-    throw error;
-  }
+  await createMigrationBackup(database, options, 0);
 
   const now = options.now ?? (() => new Date());
   database.exec('BEGIN IMMEDIATE');
@@ -1491,14 +1778,17 @@ async function migrateLegacyState(
       record.createdAt,
       record.updatedAt,
     );
-    database.prepare(
-      'INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)',
-    ).run(PROJECT_STATE_SCHEMA_VERSION, timestamp);
+    insertSchemaMigrationHistory(
+      database,
+      CURRENT_SCHEMA_MIGRATION_VERSIONS,
+      timestamp,
+    );
     database.exec(`
       DROP TABLE legacy_project_metadata;
       PRAGMA user_version = ${PROJECT_STATE_SCHEMA_VERSION};
-      COMMIT;
     `);
+    assertDatabaseHealthy(database, options.projectId);
+    database.exec('COMMIT');
   } catch (error) {
     try {
       if (database.isTransaction)
@@ -1511,6 +1801,119 @@ async function migrateLegacyState(
       'Unable to migrate the legacy project state database.',
       error,
     );
+  }
+}
+
+async function migrateStateV1ToV2(
+  database: DatabaseSync,
+  options: OpenProjectStateOptions,
+): Promise<void> {
+  const versionBeforeBackup = readUserVersion(database);
+  if (versionBeforeBackup === PROJECT_STATE_SCHEMA_VERSION) {
+    assertDatabaseHealthy(database, options.projectId);
+    return;
+  }
+  if (versionBeforeBackup !== 1) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      `Project state schema ${versionBeforeBackup} is not v1 or v2.`,
+    );
+  }
+
+  await createMigrationBackup(database, options, 1);
+  const now = options.now ?? (() => new Date());
+  database.exec('BEGIN IMMEDIATE');
+  try {
+    const lockedVersion = readUserVersion(database);
+    if (lockedVersion === PROJECT_STATE_SCHEMA_VERSION) {
+      assertDatabaseHealthy(database, options.projectId);
+      database.exec('COMMIT');
+      return;
+    }
+    if (lockedVersion !== 1) {
+      throw new ProjectStateError(
+        'PROJECT_STATE_INVALID',
+        `Project state schema ${lockedVersion} changed during migration.`,
+      );
+    }
+    const metadataTable = database.prepare(`
+      SELECT 1 AS found FROM sqlite_schema
+      WHERE type = 'table' AND name = 'project_metadata'
+    `).get() as SqlRow | undefined;
+    const metadata = metadataTable
+      ? database.prepare(`
+          SELECT project_id, schema_version, created_at
+          FROM project_metadata
+          WHERE singleton = 1
+        `).get() as SqlRow | undefined
+      : undefined;
+    if (
+      !metadata
+      || readString(metadata, 'project_id') !== options.projectId
+      || readInteger(metadata, 'schema_version') !== 1
+    ) {
+      throw new ProjectStateError(
+        'PROJECT_STATE_INVALID',
+        'The project state v1 metadata does not match the project manifest.',
+      );
+    }
+    assertSchemaMigrationHistory(database, [1]);
+
+    const timestamp = now().toISOString();
+    database.exec(`
+      ALTER TABLE project_metadata RENAME TO project_metadata_v1;
+      ${PROJECT_STATE_METADATA_SCHEMA_SQL}
+      ${SOURCE_ASSET_COMMIT_SCHEMA_SQL}
+    `);
+    database.prepare(`
+      INSERT INTO project_metadata(
+        singleton, project_id, schema_version, created_at, updated_at
+      ) VALUES (1, ?, ?, ?, ?)
+    `).run(
+      options.projectId,
+      PROJECT_STATE_SCHEMA_VERSION,
+      readString(metadata, 'created_at'),
+      timestamp,
+    );
+    database.prepare(
+      'INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)',
+    ).run(PROJECT_STATE_SCHEMA_VERSION, timestamp);
+    database.exec(`
+      DROP TABLE project_metadata_v1;
+      PRAGMA user_version = ${PROJECT_STATE_SCHEMA_VERSION};
+    `);
+    assertDatabaseHealthy(database, options.projectId);
+    database.exec('COMMIT');
+  } catch (error) {
+    try {
+      if (database.isTransaction)
+        database.exec('ROLLBACK');
+    } catch {
+      // The pre-migration backup remains available for explicit recovery.
+    }
+    throw new ProjectStateError(
+      'PROJECT_STATE_MIGRATION_FAILED',
+      'Unable to migrate the project state database from v1 to v2.',
+      error,
+    );
+  }
+}
+
+async function createMigrationBackup(
+  database: DatabaseSync,
+  options: OpenProjectStateOptions,
+  version: number,
+): Promise<void> {
+  const backupDirectory = join(options.projectDirectory, 'state/backups');
+  await mkdir(backupDirectory, { recursive: true });
+  const id = (options.generateId ?? randomUUID)();
+  const backupPath = join(backupDirectory, `project-v${version}-${id}.sqlite`);
+  await createPrivateFile(backupPath);
+  try {
+    await backup(database, backupPath);
+  } catch (error) {
+    await unlink(backupPath).catch(() => {});
+    throw error;
   }
 }
 
@@ -1541,6 +1944,116 @@ function assertDatabaseHealthy(database: DatabaseSync, projectId: string): void 
       'The project state metadata does not match the project manifest.',
     );
   }
+  assertCurrentSchemaMigrationHistory(database);
+  const sourceAssetCommitTable = database.prepare(`
+    SELECT 1 AS found FROM sqlite_schema
+    WHERE type = 'table' AND name = 'source_asset_commits'
+  `).get() as SqlRow | undefined;
+  const foreignKeyViolation = database.prepare(
+    'PRAGMA foreign_key_check',
+  ).get() as SqlRow | undefined;
+  const invalidCommittedMapping = sourceAssetCommitTable
+    ? database.prepare(`
+        SELECT 1 AS found
+        FROM source_asset_commits AS commit_mapping
+        LEFT JOIN source_assets AS source
+          ON source.source_asset_id = commit_mapping.source_asset_id
+        WHERE commit_mapping.status = 'committed'
+          AND (
+            commit_mapping.committed_source_asset_id IS NULL
+            OR commit_mapping.committed_source_asset_id
+              != commit_mapping.source_asset_id
+            OR source.source_asset_id IS NULL
+            OR source.source_type != commit_mapping.source_type
+            OR source.original_name != commit_mapping.original_name
+            OR source.content_hash != commit_mapping.expected_content_hash
+            OR source.relative_path != commit_mapping.target_relative_path
+            OR source.created_by != commit_mapping.created_by
+          )
+        LIMIT 1
+      `).get() as SqlRow | undefined
+    : undefined;
+  if (!sourceAssetCommitTable || foreignKeyViolation || invalidCommittedMapping) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      'The source asset commit state is inconsistent.',
+    );
+  }
+}
+
+function assertSchemaMigrationHistory(
+  database: DatabaseSync,
+  expectedVersions: readonly number[],
+): void {
+  const versions = readSchemaMigrationHistory(database);
+  if (!schemaMigrationHistoriesEqual(versions, expectedVersions)) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      'The project state migration history is inconsistent.',
+    );
+  }
+}
+
+function assertCurrentSchemaMigrationHistory(database: DatabaseSync): void {
+  const versions = readSchemaMigrationHistory(database);
+  if (
+    !schemaMigrationHistoriesEqual(
+      versions,
+      CURRENT_SCHEMA_MIGRATION_VERSIONS,
+    )
+    && !schemaMigrationHistoriesEqual(
+      versions,
+      V1_TO_CURRENT_SCHEMA_MIGRATION_VERSIONS,
+    )
+  ) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      'The project state migration history is inconsistent.',
+    );
+  }
+}
+
+function readSchemaMigrationHistory(database: DatabaseSync): readonly number[] {
+  const table = database.prepare(`
+    SELECT 1 AS found FROM sqlite_schema
+    WHERE type = 'table' AND name = 'schema_migrations'
+  `).get() as SqlRow | undefined;
+  if (!table) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      'The project state migration history table is missing.',
+    );
+  }
+  const rows = database.prepare(`
+    SELECT version, applied_at FROM schema_migrations ORDER BY version
+  `).all() as SqlRow[];
+  const versions = rows.map((row) => {
+    readString(row, 'applied_at');
+    return readInteger(row, 'version');
+  });
+  return versions;
+}
+
+function schemaMigrationHistoriesEqual(
+  actualVersions: readonly number[],
+  expectedVersions: readonly number[],
+): boolean {
+  return actualVersions.length === expectedVersions.length
+    && actualVersions.every(
+      (version, index) => version === expectedVersions[index],
+    );
+}
+
+function insertSchemaMigrationHistory(
+  database: DatabaseSync,
+  versions: readonly number[],
+  timestamp: string,
+): void {
+  const insert = database.prepare(
+    'INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)',
+  );
+  for (const version of versions)
+    insert.run(version, timestamp);
 }
 
 async function assertPhysicalStateDirectory(databasePath: string): Promise<void> {
@@ -1639,6 +2152,171 @@ function mapArtifactRow(row: SqlRow): ArtifactRecord {
     createdAt: readString(row, 'created_at'),
     createdBy: readString(row, 'created_by'),
   });
+}
+
+function mapSourceAssetCommitRow(row: SqlRow): SourceAssetCommitMapping {
+  const status = readSourceAssetCommitStatus(row, 'status');
+  const recoveryReason = readOptionalString(row, 'recovery_reason');
+  if (status === 'recovery_required' && !recoveryReason) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      'A recovery-required source asset commit must have a reason.',
+    );
+  }
+  const sourceAsset = mapStoredSourceAssetRow(row);
+  if (status === 'committed' && !sourceAsset) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      'A committed source asset mapping must have a source asset record.',
+    );
+  }
+  return {
+    idempotencyKey: readString(row, 'idempotency_key'),
+    expectedContentHash: readString(row, 'expected_content_hash'),
+    expectedByteLength: readInteger(row, 'expected_byte_length'),
+    originalName: readString(row, 'original_name'),
+    sourceType: readString(row, 'source_type'),
+    createdBy: readString(row, 'created_by'),
+    sourceAssetId: readString(row, 'source_asset_id'),
+    targetRelativePath: readString(row, 'target_relative_path'),
+    status,
+    ...(recoveryReason ? { recoveryReason } : {}),
+    ...(sourceAsset ? { sourceAsset } : {}),
+    createdAt: readString(row, 'created_at'),
+    updatedAt: readString(row, 'updated_at'),
+  };
+}
+
+function mapStoredSourceAssetRow(row: SqlRow): SourceAssetRecord | undefined {
+  const sourceAssetId = readOptionalString(row, 'stored_source_asset_id');
+  if (!sourceAssetId)
+    return undefined;
+  return parseSourceAssetRecord({
+    sourceAssetId,
+    sourceType: readString(row, 'stored_source_type'),
+    originalName: readString(row, 'stored_original_name'),
+    contentHash: readString(row, 'stored_content_hash'),
+    relativePath: readString(row, 'stored_relative_path'),
+    createdAt: readString(row, 'stored_created_at'),
+    createdBy: readString(row, 'stored_created_by'),
+  });
+}
+
+function mapSourceAssetRow(row: SqlRow): SourceAssetRecord {
+  return parseSourceAssetRecord({
+    sourceAssetId: readString(row, 'source_asset_id'),
+    sourceType: readString(row, 'source_type'),
+    originalName: readString(row, 'original_name'),
+    contentHash: readString(row, 'content_hash'),
+    relativePath: readString(row, 'relative_path'),
+    createdAt: readString(row, 'created_at'),
+    createdBy: readString(row, 'created_by'),
+  });
+}
+
+function sourceAssetCommitIntentFromMapping(
+  mapping: SourceAssetCommitMapping,
+): SourceAssetCommitIntent {
+  return {
+    expectedContentHash: mapping.expectedContentHash,
+    expectedByteLength: mapping.expectedByteLength,
+    originalName: mapping.originalName,
+    sourceType: mapping.sourceType,
+    createdBy: mapping.createdBy,
+  };
+}
+
+function sourceAssetTargetRelativePath(
+  sourceAssetId: string,
+  originalName: string,
+): string {
+  return `inputs/source-assets/${sourceAssetId}/${originalName}`;
+}
+
+function assertSourceAssetMatchesCommit(
+  mapping: SourceAssetCommitMapping,
+  expectedByteLength: number,
+  record: SourceAssetRecord,
+): void {
+  if (
+    expectedByteLength !== mapping.expectedByteLength
+    || record.sourceAssetId !== mapping.sourceAssetId
+    || record.sourceType !== mapping.sourceType
+    || record.originalName !== mapping.originalName
+    || record.contentHash !== mapping.expectedContentHash
+    || record.relativePath !== mapping.targetRelativePath
+    || record.createdBy !== mapping.createdBy
+  ) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_CONFLICT',
+      'The source asset record does not match its commit reservation.',
+    );
+  }
+}
+
+function assertSourceAssetRecordsEqual(
+  stored: SourceAssetRecord,
+  proposed: SourceAssetRecord,
+): void {
+  if (
+    stored.sourceAssetId !== proposed.sourceAssetId
+    || stored.sourceType !== proposed.sourceType
+    || stored.originalName !== proposed.originalName
+    || stored.contentHash !== proposed.contentHash
+    || stored.relativePath !== proposed.relativePath
+    || stored.createdAt !== proposed.createdAt
+    || stored.createdBy !== proposed.createdBy
+  ) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_CONFLICT',
+      'The existing source asset record does not match the finalization.',
+    );
+  }
+}
+
+function assertSourceAssetByteLength(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      'The source asset byte length must be a non-negative safe integer.',
+    );
+  }
+}
+
+function assertUuidV4(value: string, field: string): void {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value,
+    )
+  ) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      `The source asset commit ${field} must be a UUIDv4.`,
+    );
+  }
+}
+
+function assertNonEmptyStateString(value: unknown, field: string): asserts value is string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      `The source asset commit ${field} must be a non-empty string.`,
+    );
+  }
+}
+
+function readSourceAssetCommitStatus(
+  row: SqlRow,
+  key: string,
+): SourceAssetCommitStatus {
+  const value = readString(row, key);
+  if (!['reserved', 'committed', 'recovery_required'].includes(value)) {
+    throw new ProjectStateError(
+      'PROJECT_STATE_INVALID',
+      'Invalid source asset commit status.',
+    );
+  }
+  return value as SourceAssetCommitStatus;
 }
 
 function mapDependencyRow(row: SqlRow): ArtifactDependency {

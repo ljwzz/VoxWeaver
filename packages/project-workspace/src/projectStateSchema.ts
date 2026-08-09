@@ -1,13 +1,135 @@
-export const PROJECT_STATE_SCHEMA_VERSION = 1 as const;
+export const PROJECT_STATE_SCHEMA_VERSION = 2 as const;
 
-export const PROJECT_STATE_SCHEMA_SQL = `
+export const PROJECT_STATE_METADATA_SCHEMA_SQL = `
 CREATE TABLE project_metadata (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   project_id TEXT NOT NULL UNIQUE,
-  schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 2),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 ) STRICT;
+`;
+
+export const SOURCE_ASSET_COMMIT_SCHEMA_SQL = `
+CREATE TABLE source_asset_commits (
+  idempotency_key TEXT PRIMARY KEY,
+  expected_content_hash TEXT NOT NULL,
+  expected_byte_length INTEGER NOT NULL CHECK (
+    expected_byte_length BETWEEN 0 AND 9007199254740991
+  ),
+  original_name TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  source_asset_id TEXT NOT NULL UNIQUE,
+  target_relative_path TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL CHECK (
+    status IN ('reserved', 'committed', 'recovery_required')
+  ),
+  recovery_reason TEXT,
+  committed_source_asset_id TEXT UNIQUE REFERENCES source_assets(source_asset_id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (
+    expected_content_hash,
+    expected_byte_length,
+    original_name,
+    source_type
+  ),
+  CHECK (
+    (status = 'recovery_required'
+      AND recovery_reason IS NOT NULL
+      AND length(recovery_reason) > 0)
+    OR (status != 'recovery_required' AND recovery_reason IS NULL)
+  ),
+  CHECK (
+    (status = 'committed'
+      AND committed_source_asset_id IS NOT NULL
+      AND committed_source_asset_id = source_asset_id)
+    OR (status != 'committed' AND committed_source_asset_id IS NULL)
+  )
+) STRICT;
+
+CREATE TRIGGER source_asset_commits_initially_reserved
+BEFORE INSERT ON source_asset_commits
+WHEN NEW.status != 'reserved'
+BEGIN
+  SELECT RAISE(ABORT, 'source asset commits must be reserved first');
+END;
+
+CREATE TRIGGER source_asset_commits_binding_no_update
+BEFORE UPDATE OF
+  idempotency_key,
+  expected_content_hash,
+  expected_byte_length,
+  original_name,
+  source_type,
+  created_by,
+  source_asset_id,
+  target_relative_path,
+  created_at
+ON source_asset_commits
+BEGIN
+  SELECT RAISE(ABORT, 'source asset commit bindings are immutable');
+END;
+
+CREATE TRIGGER source_asset_commits_recovery_reason_stable
+BEFORE UPDATE OF recovery_reason ON source_asset_commits
+WHEN OLD.status = 'recovery_required'
+  AND NEW.status = 'recovery_required'
+  AND NEW.recovery_reason IS NOT OLD.recovery_reason
+BEGIN
+  SELECT RAISE(ABORT, 'source asset commit recovery reason is immutable');
+END;
+
+CREATE TRIGGER source_asset_commits_state_transition
+BEFORE UPDATE OF status ON source_asset_commits
+WHEN NOT (
+  (OLD.status = 'reserved' AND NEW.status IN ('committed', 'recovery_required'))
+  OR (OLD.status = 'committed' AND NEW.status = 'recovery_required')
+  OR (OLD.status = 'recovery_required' AND NEW.status = 'committed')
+  OR OLD.status = NEW.status
+)
+BEGIN
+  SELECT RAISE(ABORT, 'invalid source asset commit state transition');
+END;
+
+CREATE TRIGGER source_asset_commits_committed_record_matches
+BEFORE UPDATE OF status, committed_source_asset_id ON source_asset_commits
+WHEN NEW.status = 'committed'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM source_assets AS source
+    WHERE source.source_asset_id = NEW.source_asset_id
+      AND source.source_type = NEW.source_type
+      AND source.original_name = NEW.original_name
+      AND source.content_hash = NEW.expected_content_hash
+      AND source.relative_path = NEW.target_relative_path
+      AND source.created_by = NEW.created_by
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'committed source asset does not match its reservation');
+END;
+
+CREATE TRIGGER source_asset_commits_no_delete
+BEFORE DELETE ON source_asset_commits
+BEGIN
+  SELECT RAISE(ABORT, 'source asset commit mappings are immutable');
+END;
+
+CREATE TRIGGER committed_source_assets_no_update
+BEFORE UPDATE ON source_assets
+WHEN EXISTS (
+  SELECT 1
+  FROM source_asset_commits AS commit_mapping
+  WHERE commit_mapping.committed_source_asset_id = OLD.source_asset_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'committed source assets are immutable');
+END;
+`;
+
+export const PROJECT_STATE_SCHEMA_SQL = `
+${PROJECT_STATE_METADATA_SCHEMA_SQL}
 
 CREATE TABLE schema_migrations (
   version INTEGER PRIMARY KEY,
@@ -23,6 +145,8 @@ CREATE TABLE source_assets (
   created_at TEXT NOT NULL,
   created_by TEXT NOT NULL
 ) STRICT;
+
+${SOURCE_ASSET_COMMIT_SCHEMA_SQL}
 
 CREATE TABLE artifacts (
   artifact_id TEXT PRIMARY KEY,
