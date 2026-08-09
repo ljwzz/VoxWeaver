@@ -142,6 +142,14 @@ export class AppCoreService {
           command,
         ),
       },
+      {
+        reimportArtifactStoreFactory: context => (
+          new NodeNovelImportReviewArtifactStore(
+            context,
+            workflowFactory(context),
+          )
+        ),
+      },
     );
     this.novelImportReview = new NovelImportReviewApplicationService(
       this.#projects,
