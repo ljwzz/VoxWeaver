@@ -1,0 +1,735 @@
+{
+  "fixtureExpectedSchemaVersion": 1,
+  "fixtureId": "reimport-head-insert",
+  "result": {
+    "status": "success"
+  },
+  "inputHandling": "decode-and-structure",
+  "blockOrder": [
+    "46090e09-3d97-442d-8969-33d55abe2844",
+    "a6c9d1bc-aab9-490c-8dbe-d0e0b2fd01bc",
+    "20bf61a6-cf91-4d6d-b140-32f46d1ee365",
+    "a193369f-b9db-47b2-9ac1-c0f843b70a3e",
+    "12f09aef-5646-4074-b948-8c60961cf3fb",
+    "36690f6d-8d8d-4563-b422-fd5c759b8244",
+    "cc095e20-daed-4d62-9bd4-395c45324869",
+    "af909890-3643-410d-84ab-b2f7427101b4"
+  ],
+  "utf8ByteRanges": [
+    {
+      "blockId": "46090e09-3d97-442d-8969-33d55abe2844",
+      "range": {
+        "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+        "textLayer": "raw",
+        "offsetUnit": "utf8-byte",
+        "startByte": 0,
+        "endByte": 16
+      }
+    },
+    {
+      "blockId": "a6c9d1bc-aab9-490c-8dbe-d0e0b2fd01bc",
+      "range": {
+        "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+        "textLayer": "raw",
+        "offsetUnit": "utf8-byte",
+        "startByte": 16,
+        "endByte": 23
+      }
+    },
+    {
+      "blockId": "20bf61a6-cf91-4d6d-b140-32f46d1ee365",
+      "range": {
+        "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+        "textLayer": "raw",
+        "offsetUnit": "utf8-byte",
+        "startByte": 23,
+        "endByte": 39
+      }
+    },
+    {
+      "blockId": "a193369f-b9db-47b2-9ac1-c0f843b70a3e",
+      "range": {
+        "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+        "textLayer": "raw",
+        "offsetUnit": "utf8-byte",
+        "startByte": 39,
+        "endByte": 40
+      }
+    },
+    {
+      "blockId": "12f09aef-5646-4074-b948-8c60961cf3fb",
+      "range": {
+        "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+        "textLayer": "raw",
+        "offsetUnit": "utf8-byte",
+        "startByte": 40,
+        "endByte": 57
+      }
+    },
+    {
+      "blockId": "36690f6d-8d8d-4563-b422-fd5c759b8244",
+      "range": {
+        "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+        "textLayer": "raw",
+        "offsetUnit": "utf8-byte",
+        "startByte": 57,
+        "endByte": 79
+      }
+    },
+    {
+      "blockId": "cc095e20-daed-4d62-9bd4-395c45324869",
+      "range": {
+        "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+        "textLayer": "raw",
+        "offsetUnit": "utf8-byte",
+        "startByte": 79,
+        "endByte": 96
+      }
+    },
+    {
+      "blockId": "af909890-3643-410d-84ab-b2f7427101b4",
+      "range": {
+        "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+        "textLayer": "raw",
+        "offsetUnit": "utf8-byte",
+        "startByte": 96,
+        "endByte": 118
+      }
+    }
+  ],
+  "chapterRanges": [
+    {
+      "chapterId": "4ed87b3a-24eb-43e4-b483-84a71a4cbeb5",
+      "headingRange": {
+        "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+        "textLayer": "canonical",
+        "offsetUnit": "utf8-byte",
+        "startByte": 16,
+        "endByte": 23
+      },
+      "contentRange": {
+        "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+        "textLayer": "canonical",
+        "offsetUnit": "utf8-byte",
+        "startByte": 23,
+        "endByte": 40
+      }
+    },
+    {
+      "chapterId": "fcddddc3-5ef6-4a0a-905d-ed6cabbe716f",
+      "headingRange": {
+        "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+        "textLayer": "canonical",
+        "offsetUnit": "utf8-byte",
+        "startByte": 40,
+        "endByte": 57
+      },
+      "contentRange": {
+        "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+        "textLayer": "canonical",
+        "offsetUnit": "utf8-byte",
+        "startByte": 57,
+        "endByte": 79
+      }
+    },
+    {
+      "chapterId": "a2b8a4b7-775a-4b7a-b110-408ee7beec93",
+      "headingRange": {
+        "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+        "textLayer": "canonical",
+        "offsetUnit": "utf8-byte",
+        "startByte": 79,
+        "endByte": 96
+      },
+      "contentRange": {
+        "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+        "textLayer": "canonical",
+        "offsetUnit": "utf8-byte",
+        "startByte": 96,
+        "endByte": 118
+      }
+    }
+  ],
+  "classification": {
+    "unit": "utf8-byte",
+    "textLayer": "canonical",
+    "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+    "totalByteLength": 118,
+    "classifiedByteLength": 118,
+    "coveragePercent": 100,
+    "segments": [
+      {
+        "classification": "front_matter",
+        "range": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 0,
+          "endByte": 16
+        }
+      },
+      {
+        "classification": "chapter",
+        "range": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 16,
+          "endByte": 40
+        },
+        "chapterId": "4ed87b3a-24eb-43e4-b483-84a71a4cbeb5"
+      },
+      {
+        "classification": "chapter",
+        "range": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 40,
+          "endByte": 79
+        },
+        "chapterId": "fcddddc3-5ef6-4a0a-905d-ed6cabbe716f"
+      },
+      {
+        "classification": "chapter",
+        "range": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 79,
+          "endByte": 118
+        },
+        "chapterId": "a2b8a4b7-775a-4b7a-b110-408ee7beec93"
+      }
+    ]
+  },
+  "issues": [],
+  "importedNovel": {
+    "documentType": "imported-novel",
+    "schemaVersion": 1,
+    "sourceAssetId": "bf3154bf-556c-44a9-afb9-ba768b864a72",
+    "sourceHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+    "sourceByteLength": 118,
+    "sourceFormat": "txt",
+    "encodingDecision": {
+      "sourceContentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+      "sourceEncoding": "utf-8",
+      "method": "strict-utf8"
+    },
+    "adapterId": "txt-source-adapter",
+    "adapterVersion": "m1-fixture-v1",
+    "processorId": "novel-import",
+    "processorVersion": "m1-fixture-v1",
+    "alignmentPolicyVersion": "m1-block-alignment-v1",
+    "rawTextRevision": {
+      "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+      "textLayer": "raw",
+      "contentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+      "byteLength": 118
+    },
+    "metadata": {
+      "title": "合成重导入头插",
+      "language": "zh-CN"
+    },
+    "orderedBlocks": [
+      {
+        "blockId": "46090e09-3d97-442d-8969-33d55abe2844",
+        "kind": "paragraph",
+        "rawText": "合成导读。\n",
+        "sourceLocator": {
+          "sourceAssetId": "bf3154bf-556c-44a9-afb9-ba768b864a72",
+          "sourceContentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+          "sourceEncoding": "utf-8",
+          "sourceByteRange": {
+            "offsetUnit": "source-byte",
+            "startByte": 0,
+            "endByte": 16
+          },
+          "rawTextRange": {
+            "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+            "textLayer": "raw",
+            "offsetUnit": "utf8-byte",
+            "startByte": 0,
+            "endByte": 16
+          },
+          "lineRange": {
+            "lineBase": 1,
+            "startLine": 1,
+            "endLineExclusive": 2
+          }
+        },
+        "contentHash": "e050b847a8109e8af0f44de7f5e3797580cf480632b8e651af3123a90786c195"
+      },
+      {
+        "blockId": "a6c9d1bc-aab9-490c-8dbe-d0e0b2fd01bc",
+        "kind": "heading",
+        "rawText": "序章\n",
+        "sourceLocator": {
+          "sourceAssetId": "bf3154bf-556c-44a9-afb9-ba768b864a72",
+          "sourceContentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+          "sourceEncoding": "utf-8",
+          "sourceByteRange": {
+            "offsetUnit": "source-byte",
+            "startByte": 16,
+            "endByte": 23
+          },
+          "rawTextRange": {
+            "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+            "textLayer": "raw",
+            "offsetUnit": "utf8-byte",
+            "startByte": 16,
+            "endByte": 23
+          },
+          "lineRange": {
+            "lineBase": 1,
+            "startLine": 2,
+            "endLineExclusive": 3
+          }
+        },
+        "contentHash": "6644812aec4de51903d8f9552627b03c5cbc086f3b0a00d8dadd1b0d1d5d6ee3"
+      },
+      {
+        "blockId": "20bf61a6-cf91-4d6d-b140-32f46d1ee365",
+        "kind": "paragraph",
+        "rawText": "小镇醒来。\n",
+        "sourceLocator": {
+          "sourceAssetId": "bf3154bf-556c-44a9-afb9-ba768b864a72",
+          "sourceContentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+          "sourceEncoding": "utf-8",
+          "sourceByteRange": {
+            "offsetUnit": "source-byte",
+            "startByte": 23,
+            "endByte": 39
+          },
+          "rawTextRange": {
+            "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+            "textLayer": "raw",
+            "offsetUnit": "utf8-byte",
+            "startByte": 23,
+            "endByte": 39
+          },
+          "lineRange": {
+            "lineBase": 1,
+            "startLine": 3,
+            "endLineExclusive": 4
+          }
+        },
+        "contentHash": "7e8e2cd1b69a100959a802463a4d66ff5c140fdb7b844b80ccd52925b8204869"
+      },
+      {
+        "blockId": "a193369f-b9db-47b2-9ac1-c0f843b70a3e",
+        "kind": "separator",
+        "rawText": "\n",
+        "sourceLocator": {
+          "sourceAssetId": "bf3154bf-556c-44a9-afb9-ba768b864a72",
+          "sourceContentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+          "sourceEncoding": "utf-8",
+          "sourceByteRange": {
+            "offsetUnit": "source-byte",
+            "startByte": 39,
+            "endByte": 40
+          },
+          "rawTextRange": {
+            "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+            "textLayer": "raw",
+            "offsetUnit": "utf8-byte",
+            "startByte": 39,
+            "endByte": 40
+          },
+          "lineRange": {
+            "lineBase": 1,
+            "startLine": 4,
+            "endLineExclusive": 5
+          }
+        },
+        "contentHash": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+      },
+      {
+        "blockId": "12f09aef-5646-4074-b948-8c60961cf3fb",
+        "kind": "heading",
+        "rawText": "第一章 相遇\n",
+        "sourceLocator": {
+          "sourceAssetId": "bf3154bf-556c-44a9-afb9-ba768b864a72",
+          "sourceContentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+          "sourceEncoding": "utf-8",
+          "sourceByteRange": {
+            "offsetUnit": "source-byte",
+            "startByte": 40,
+            "endByte": 57
+          },
+          "rawTextRange": {
+            "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+            "textLayer": "raw",
+            "offsetUnit": "utf8-byte",
+            "startByte": 40,
+            "endByte": 57
+          },
+          "lineRange": {
+            "lineBase": 1,
+            "startLine": 5,
+            "endLineExclusive": 6
+          }
+        },
+        "contentHash": "4cc6c1e0a3388e45495190874bdee52c3853773b91e88c8bee2bd31681d5544a"
+      },
+      {
+        "blockId": "36690f6d-8d8d-4563-b422-fd5c759b8244",
+        "kind": "paragraph",
+        "rawText": "甲在桥边等候。\n",
+        "sourceLocator": {
+          "sourceAssetId": "bf3154bf-556c-44a9-afb9-ba768b864a72",
+          "sourceContentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+          "sourceEncoding": "utf-8",
+          "sourceByteRange": {
+            "offsetUnit": "source-byte",
+            "startByte": 57,
+            "endByte": 79
+          },
+          "rawTextRange": {
+            "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+            "textLayer": "raw",
+            "offsetUnit": "utf8-byte",
+            "startByte": 57,
+            "endByte": 79
+          },
+          "lineRange": {
+            "lineBase": 1,
+            "startLine": 6,
+            "endLineExclusive": 7
+          }
+        },
+        "contentHash": "c691d394400c4802cb31d897973df2207fd00ad732997c6ff16164910154bf3a"
+      },
+      {
+        "blockId": "cc095e20-daed-4d62-9bd4-395c45324869",
+        "kind": "heading",
+        "rawText": "第二章 回声\n",
+        "sourceLocator": {
+          "sourceAssetId": "bf3154bf-556c-44a9-afb9-ba768b864a72",
+          "sourceContentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+          "sourceEncoding": "utf-8",
+          "sourceByteRange": {
+            "offsetUnit": "source-byte",
+            "startByte": 79,
+            "endByte": 96
+          },
+          "rawTextRange": {
+            "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+            "textLayer": "raw",
+            "offsetUnit": "utf8-byte",
+            "startByte": 79,
+            "endByte": 96
+          },
+          "lineRange": {
+            "lineBase": 1,
+            "startLine": 7,
+            "endLineExclusive": 8
+          }
+        },
+        "contentHash": "f9d6befe0b4be8cbdc79965bca7ace95de19ad68862911fd09a9c37aa34c08e7"
+      },
+      {
+        "blockId": "af909890-3643-410d-84ab-b2f7427101b4",
+        "kind": "paragraph",
+        "rawText": "钟声越过屋脊。\n",
+        "sourceLocator": {
+          "sourceAssetId": "bf3154bf-556c-44a9-afb9-ba768b864a72",
+          "sourceContentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+          "sourceEncoding": "utf-8",
+          "sourceByteRange": {
+            "offsetUnit": "source-byte",
+            "startByte": 96,
+            "endByte": 118
+          },
+          "rawTextRange": {
+            "textRevisionId": "996a4be9-7a87-43af-a8fa-ec58391f7e9e",
+            "textLayer": "raw",
+            "offsetUnit": "utf8-byte",
+            "startByte": 96,
+            "endByte": 118
+          },
+          "lineRange": {
+            "lineBase": 1,
+            "startLine": 8,
+            "endLineExclusive": 9
+          }
+        },
+        "contentHash": "478fd03f38cc1947db0db81a543660fef1d21c28d4267b0e81cac2b65dbe4e1b"
+      }
+    ],
+    "structuralHints": [],
+    "warnings": [],
+    "reviewStatus": "not_required"
+  },
+  "chapterIndex": {
+    "documentType": "chapter-index",
+    "schemaVersion": 1,
+    "sourceAssetId": "bf3154bf-556c-44a9-afb9-ba768b864a72",
+    "sourceHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+    "processorId": "chapter-index",
+    "processorVersion": "m1-fixture-v1",
+    "textRevision": {
+      "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+      "textLayer": "canonical",
+      "contentHash": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46",
+      "byteLength": 118
+    },
+    "candidates": [
+      {
+        "chapterCandidateId": "57f1b696-2086-438e-8b93-a833626838a1",
+        "headingRange": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 16,
+          "endByte": 23
+        },
+        "lineRange": {
+          "lineBase": 1,
+          "startLine": 2,
+          "endLineExclusive": 3
+        },
+        "rawTitle": "序章",
+        "normalizedTitle": "序章",
+        "ruleId": "m1-synthetic-heading",
+        "ruleVersion": "1",
+        "ruleConfidence": 1,
+        "confidenceSource": "deterministic-fixture-rule",
+        "evidence": [
+          "line-start heading pattern"
+        ],
+        "contextBefore": [
+          "合成导读。"
+        ],
+        "contextAfter": [
+          "小镇醒来。"
+        ],
+        "reviewStatus": "not_required"
+      },
+      {
+        "chapterCandidateId": "dd996323-89f6-44ba-90b1-bb48d5165538",
+        "headingRange": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 40,
+          "endByte": 57
+        },
+        "lineRange": {
+          "lineBase": 1,
+          "startLine": 5,
+          "endLineExclusive": 6
+        },
+        "rawTitle": "第一章 相遇",
+        "normalizedTitle": "相遇",
+        "ruleId": "m1-synthetic-heading",
+        "ruleVersion": "1",
+        "ruleConfidence": 1,
+        "confidenceSource": "deterministic-fixture-rule",
+        "evidence": [
+          "line-start heading pattern"
+        ],
+        "contextBefore": [
+          "小镇醒来。"
+        ],
+        "contextAfter": [
+          "甲在桥边等候。"
+        ],
+        "reviewStatus": "not_required"
+      },
+      {
+        "chapterCandidateId": "b7ade83a-cc48-4dc9-bcf4-4471c93237d9",
+        "headingRange": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 79,
+          "endByte": 96
+        },
+        "lineRange": {
+          "lineBase": 1,
+          "startLine": 7,
+          "endLineExclusive": 8
+        },
+        "rawTitle": "第二章 回声",
+        "normalizedTitle": "回声",
+        "ruleId": "m1-synthetic-heading",
+        "ruleVersion": "1",
+        "ruleConfidence": 1,
+        "confidenceSource": "deterministic-fixture-rule",
+        "evidence": [
+          "line-start heading pattern"
+        ],
+        "contextBefore": [
+          "甲在桥边等候。"
+        ],
+        "contextAfter": [
+          "钟声越过屋脊。"
+        ],
+        "reviewStatus": "not_required"
+      }
+    ],
+    "entries": [
+      {
+        "chapterId": "4ed87b3a-24eb-43e4-b483-84a71a4cbeb5",
+        "order": 0,
+        "title": "序章",
+        "rawHeading": "序章",
+        "headingRange": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 16,
+          "endByte": 23
+        },
+        "contentRange": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 23,
+          "endByte": 40
+        },
+        "sourceLineRange": {
+          "lineBase": 1,
+          "startLine": 2,
+          "endLineExclusive": 5
+        },
+        "confidence": 1,
+        "detectedBy": "rule:m1-synthetic-heading@1",
+        "reviewStatus": "not_required"
+      },
+      {
+        "chapterId": "fcddddc3-5ef6-4a0a-905d-ed6cabbe716f",
+        "order": 1,
+        "chapterNumber": "1",
+        "title": "相遇",
+        "rawHeading": "第一章 相遇",
+        "headingRange": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 40,
+          "endByte": 57
+        },
+        "contentRange": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 57,
+          "endByte": 79
+        },
+        "sourceLineRange": {
+          "lineBase": 1,
+          "startLine": 5,
+          "endLineExclusive": 7
+        },
+        "confidence": 1,
+        "detectedBy": "rule:m1-synthetic-heading@1",
+        "reviewStatus": "not_required"
+      },
+      {
+        "chapterId": "a2b8a4b7-775a-4b7a-b110-408ee7beec93",
+        "order": 2,
+        "chapterNumber": "2",
+        "title": "回声",
+        "rawHeading": "第二章 回声",
+        "headingRange": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 79,
+          "endByte": 96
+        },
+        "contentRange": {
+          "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+          "textLayer": "canonical",
+          "offsetUnit": "utf8-byte",
+          "startByte": 96,
+          "endByte": 118
+        },
+        "sourceLineRange": {
+          "lineBase": 1,
+          "startLine": 7,
+          "endLineExclusive": 9
+        },
+        "confidence": 1,
+        "detectedBy": "rule:m1-synthetic-heading@1",
+        "reviewStatus": "not_required"
+      }
+    ],
+    "coverageReport": {
+      "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+      "textLayer": "canonical",
+      "totalByteLength": 118,
+      "classifiedByteLength": 118,
+      "unclassifiedByteLength": 0,
+      "complete": true,
+      "segments": [
+        {
+          "classification": "front_matter",
+          "range": {
+            "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+            "textLayer": "canonical",
+            "offsetUnit": "utf8-byte",
+            "startByte": 0,
+            "endByte": 16
+          }
+        },
+        {
+          "classification": "chapter",
+          "range": {
+            "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+            "textLayer": "canonical",
+            "offsetUnit": "utf8-byte",
+            "startByte": 16,
+            "endByte": 40
+          },
+          "chapterId": "4ed87b3a-24eb-43e4-b483-84a71a4cbeb5"
+        },
+        {
+          "classification": "chapter",
+          "range": {
+            "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+            "textLayer": "canonical",
+            "offsetUnit": "utf8-byte",
+            "startByte": 40,
+            "endByte": 79
+          },
+          "chapterId": "fcddddc3-5ef6-4a0a-905d-ed6cabbe716f"
+        },
+        {
+          "classification": "chapter",
+          "range": {
+            "textRevisionId": "f0925afe-66c8-4d22-bb6b-d4720e58d37e",
+            "textLayer": "canonical",
+            "offsetUnit": "utf8-byte",
+            "startByte": 79,
+            "endByte": 118
+          },
+          "chapterId": "a2b8a4b7-775a-4b7a-b110-408ee7beec93"
+        }
+      ],
+      "unclassifiedRanges": []
+    },
+    "issues": [],
+    "reviewStatus": "not_required"
+  },
+  "reimportExpectation": {
+    "scenario": "head-insert",
+    "baseFixtureId": "reimport-base-lf",
+    "stableBlockIds": [
+      "a6c9d1bc-aab9-490c-8dbe-d0e0b2fd01bc",
+      "20bf61a6-cf91-4d6d-b140-32f46d1ee365",
+      "a193369f-b9db-47b2-9ac1-c0f843b70a3e",
+      "12f09aef-5646-4074-b948-8c60961cf3fb",
+      "36690f6d-8d8d-4563-b422-fd5c759b8244",
+      "cc095e20-daed-4d62-9bd4-395c45324869",
+      "af909890-3643-410d-84ab-b2f7427101b4"
+    ],
+    "insertedBlockIds": [
+      "46090e09-3d97-442d-8969-33d55abe2844"
+    ],
+    "changedBlocks": [],
+    "restoredFromFixtureId": null
+  }
+}

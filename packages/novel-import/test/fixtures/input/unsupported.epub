@@ -1,0 +1,3 @@
+VOXWEAVER OPAQUE UNSUPPORTED EPUB FIXTURE
+This is deliberately not a ZIP container.
+The unsupported-format path must not open or parse it as EPUB.

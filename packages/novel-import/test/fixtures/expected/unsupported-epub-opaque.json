@@ -1,0 +1,38 @@
+{
+  "fixtureExpectedSchemaVersion": 1,
+  "fixtureId": "unsupported-epub-opaque",
+  "result": {
+    "status": "error",
+    "errorCode": "NOVEL_IMPORT_UNSUPPORTED_FORMAT",
+    "detailReason": "format_not_enabled"
+  },
+  "inputHandling": "opaque-hash-only-no-container-open",
+  "blockOrder": [],
+  "utf8ByteRanges": [],
+  "chapterRanges": [],
+  "classification": {
+    "unit": "source-byte",
+    "textLayer": "source",
+    "totalByteLength": 147,
+    "classifiedByteLength": 147,
+    "coveragePercent": 100,
+    "segments": [
+      {
+        "classification": "unknown",
+        "startByte": 0,
+        "endByte": 147
+      }
+    ]
+  },
+  "issues": [
+    {
+      "issueId": "0e0914dd-9957-4534-8066-8a30340c181c",
+      "code": "unsupported_epub_format",
+      "severity": "error",
+      "reviewStatus": "not_required",
+      "message": "Synthetic fixture expects a deterministic import rejection.",
+      "errorCode": "NOVEL_IMPORT_UNSUPPORTED_FORMAT",
+      "detailReason": "format_not_enabled"
+    }
+  ]
+}

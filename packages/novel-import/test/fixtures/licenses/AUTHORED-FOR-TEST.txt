@@ -1,0 +1,9 @@
+VoxWeaver authored-for-test fixture declaration
+
+Every input and expected-data file registered by this dataset manifest was
+created specifically for automated testing from synthetic text. It contains
+no excerpt from a published novel and no private corpus content.
+
+The project contributor dedicates these registered fixture bytes and expected
+data under CC0-1.0. The manifest, README, and integrity test remain governed
+by the repository license.

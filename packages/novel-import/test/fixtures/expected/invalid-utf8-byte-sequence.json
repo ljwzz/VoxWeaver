@@ -1,0 +1,38 @@
+{
+  "fixtureExpectedSchemaVersion": 1,
+  "fixtureId": "invalid-utf8-byte-sequence",
+  "result": {
+    "status": "error",
+    "errorCode": "NOVEL_IMPORT_ENCODING_REQUIRED",
+    "detailReason": "manual_encoding_required"
+  },
+  "inputHandling": "opaque-hash-and-encoding-probe-only",
+  "blockOrder": [],
+  "utf8ByteRanges": [],
+  "chapterRanges": [],
+  "classification": {
+    "unit": "source-byte",
+    "textLayer": "source",
+    "totalByteLength": 13,
+    "classifiedByteLength": 13,
+    "coveragePercent": 100,
+    "segments": [
+      {
+        "classification": "unknown",
+        "startByte": 0,
+        "endByte": 13
+      }
+    ]
+  },
+  "issues": [
+    {
+      "issueId": "b759d8d0-cce4-4319-bfaa-fabe08fcd21d",
+      "code": "invalid_utf8_requires_encoding_selection",
+      "severity": "error",
+      "reviewStatus": "not_required",
+      "message": "Synthetic fixture expects a deterministic import rejection.",
+      "errorCode": "NOVEL_IMPORT_ENCODING_REQUIRED",
+      "detailReason": "manual_encoding_required"
+    }
+  ]
+}

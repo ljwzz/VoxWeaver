@@ -1,0 +1,274 @@
+{
+  "schemaVersion": 1,
+  "datasetVersion": "1.0.0",
+  "hashAlgorithm": "sha256",
+  "datasetContentHashAlgorithm": "sha256-nul-delimited-fixture-records-v1",
+  "datasetContentHash": "7bc3e56ff7f5903d8e0d5590461a543c34712f6aba9a960d1915499758f67c80",
+  "fixtures": [
+    {
+      "fixtureId": "synthetic-comprehensive-bom-crlf",
+      "purpose": [
+        "utf8-bom",
+        "crlf",
+        "chinese-numeral-chapters",
+        "volume-local-renumbering",
+        "preface-epilogue",
+        "duplicate-title",
+        "empty-chapter",
+        "inline-chapter-false-positive",
+        "duplicate-paragraph"
+      ],
+      "input": {
+        "relativePath": "input/synthetic-comprehensive-bom-crlf.txt",
+        "mediaType": "text/plain; charset=utf-8",
+        "byteLength": 345,
+        "sha256": "96f38e38f96bcfbd81cd89a3252488dcc8292385b732900ba794b4cefc750cbf"
+      },
+      "provenanceKind": "synthetic",
+      "generator": {
+        "id": "voxweaver-m1-authored-fixtures",
+        "version": "1.0.0",
+        "seed": "m1-golden:synthetic-comprehensive-bom-crlf:v1"
+      },
+      "licenseExpression": "CC0-1.0",
+      "licenseEvidence": {
+        "relativePath": "licenses/AUTHORED-FOR-TEST.txt",
+        "sha256": "c7d2bb0d515724c5eef272ad622a90d729228332f00a477b3e66dda458b0f223"
+      },
+      "expected": {
+        "relativePath": "expected/synthetic-comprehensive-bom-crlf.json",
+        "sha256": "1d1f30c4939c8106032d89ca46c68798204e31d5aa0349ea383cf099f35e7906"
+      },
+      "applicableSchemaVersions": {
+        "fixtureExpected": 1,
+        "novelImport": 1,
+        "textReference": 1
+      }
+    },
+    {
+      "fixtureId": "reimport-base-lf",
+      "purpose": [
+        "lf",
+        "reimport-baseline"
+      ],
+      "input": {
+        "relativePath": "input/reimport/base.txt",
+        "mediaType": "text/plain; charset=utf-8",
+        "byteLength": 102,
+        "sha256": "21fddb2faf8ce172e180b4e874561db7f236c2c12842c342ec4115d398a5ab84"
+      },
+      "provenanceKind": "synthetic",
+      "generator": {
+        "id": "voxweaver-m1-authored-fixtures",
+        "version": "1.0.0",
+        "seed": "m1-golden:reimport-base-lf:v1"
+      },
+      "licenseExpression": "CC0-1.0",
+      "licenseEvidence": {
+        "relativePath": "licenses/AUTHORED-FOR-TEST.txt",
+        "sha256": "c7d2bb0d515724c5eef272ad622a90d729228332f00a477b3e66dda458b0f223"
+      },
+      "expected": {
+        "relativePath": "expected/reimport-base-lf.json",
+        "sha256": "28bb27631043a9f3d1fee7b5169a28d6f9bc4e4712122f552d2b8a00c7ca840c"
+      },
+      "applicableSchemaVersions": {
+        "fixtureExpected": 1,
+        "novelImport": 1,
+        "textReference": 1
+      }
+    },
+    {
+      "fixtureId": "reimport-unchanged",
+      "purpose": [
+        "reimport-unchanged"
+      ],
+      "input": {
+        "relativePath": "input/reimport/unchanged.txt",
+        "mediaType": "text/plain; charset=utf-8",
+        "byteLength": 102,
+        "sha256": "21fddb2faf8ce172e180b4e874561db7f236c2c12842c342ec4115d398a5ab84"
+      },
+      "provenanceKind": "synthetic",
+      "generator": {
+        "id": "voxweaver-m1-authored-fixtures",
+        "version": "1.0.0",
+        "seed": "m1-golden:reimport-unchanged:v1"
+      },
+      "licenseExpression": "CC0-1.0",
+      "licenseEvidence": {
+        "relativePath": "licenses/AUTHORED-FOR-TEST.txt",
+        "sha256": "c7d2bb0d515724c5eef272ad622a90d729228332f00a477b3e66dda458b0f223"
+      },
+      "expected": {
+        "relativePath": "expected/reimport-unchanged.json",
+        "sha256": "651c0f09d54e154e861c1a3a572d6faaf0a1efbd400d65c68e6cee156aa36ead"
+      },
+      "applicableSchemaVersions": {
+        "fixtureExpected": 1,
+        "novelImport": 1,
+        "textReference": 1
+      }
+    },
+    {
+      "fixtureId": "reimport-head-insert",
+      "purpose": [
+        "reimport-head-insert"
+      ],
+      "input": {
+        "relativePath": "input/reimport/head-insert.txt",
+        "mediaType": "text/plain; charset=utf-8",
+        "byteLength": 118,
+        "sha256": "c3b8a67e44ac2202965ab1d983299bff4f4627d9c63e57d10c7add9abe062e46"
+      },
+      "provenanceKind": "synthetic",
+      "generator": {
+        "id": "voxweaver-m1-authored-fixtures",
+        "version": "1.0.0",
+        "seed": "m1-golden:reimport-head-insert:v1"
+      },
+      "licenseExpression": "CC0-1.0",
+      "licenseEvidence": {
+        "relativePath": "licenses/AUTHORED-FOR-TEST.txt",
+        "sha256": "c7d2bb0d515724c5eef272ad622a90d729228332f00a477b3e66dda458b0f223"
+      },
+      "expected": {
+        "relativePath": "expected/reimport-head-insert.json",
+        "sha256": "6ae39ebda6d5d2d0ff35c7077f01c64aa490119f6566b56d1812a33deb8167ff"
+      },
+      "applicableSchemaVersions": {
+        "fixtureExpected": 1,
+        "novelImport": 1,
+        "textReference": 1
+      }
+    },
+    {
+      "fixtureId": "reimport-single-block-modified",
+      "purpose": [
+        "reimport-single-block-modified"
+      ],
+      "input": {
+        "relativePath": "input/reimport/single-block-modified.txt",
+        "mediaType": "text/plain; charset=utf-8",
+        "byteLength": 105,
+        "sha256": "86c7593144ff16c46bdde66c4c88d67f103fb7f38a3c7bd1b8fe00bd2872bf64"
+      },
+      "provenanceKind": "synthetic",
+      "generator": {
+        "id": "voxweaver-m1-authored-fixtures",
+        "version": "1.0.0",
+        "seed": "m1-golden:reimport-single-block-modified:v1"
+      },
+      "licenseExpression": "CC0-1.0",
+      "licenseEvidence": {
+        "relativePath": "licenses/AUTHORED-FOR-TEST.txt",
+        "sha256": "c7d2bb0d515724c5eef272ad622a90d729228332f00a477b3e66dda458b0f223"
+      },
+      "expected": {
+        "relativePath": "expected/reimport-single-block-modified.json",
+        "sha256": "920a28ee8de150b207cbb6569c58bd386bbdc5758de29bc58966d38987ecea1a"
+      },
+      "applicableSchemaVersions": {
+        "fixtureExpected": 1,
+        "novelImport": 1,
+        "textReference": 1
+      }
+    },
+    {
+      "fixtureId": "reimport-content-restored",
+      "purpose": [
+        "reimport-content-restored"
+      ],
+      "input": {
+        "relativePath": "input/reimport/content-restored.txt",
+        "mediaType": "text/plain; charset=utf-8",
+        "byteLength": 102,
+        "sha256": "21fddb2faf8ce172e180b4e874561db7f236c2c12842c342ec4115d398a5ab84"
+      },
+      "provenanceKind": "synthetic",
+      "generator": {
+        "id": "voxweaver-m1-authored-fixtures",
+        "version": "1.0.0",
+        "seed": "m1-golden:reimport-content-restored:v1"
+      },
+      "licenseExpression": "CC0-1.0",
+      "licenseEvidence": {
+        "relativePath": "licenses/AUTHORED-FOR-TEST.txt",
+        "sha256": "c7d2bb0d515724c5eef272ad622a90d729228332f00a477b3e66dda458b0f223"
+      },
+      "expected": {
+        "relativePath": "expected/reimport-content-restored.json",
+        "sha256": "b6160ca8f6ff64d649bcc40611c9ab231570840c5a814fecbdbb7b3db460710c"
+      },
+      "applicableSchemaVersions": {
+        "fixtureExpected": 1,
+        "novelImport": 1,
+        "textReference": 1
+      }
+    },
+    {
+      "fixtureId": "invalid-utf8-byte-sequence",
+      "purpose": [
+        "invalid-bytes"
+      ],
+      "input": {
+        "relativePath": "input/invalid-utf8.txt",
+        "mediaType": "text/plain",
+        "byteLength": 13,
+        "sha256": "18aa051477dea54b0d5076eb057054a4d76581ad3d3e741b40a067e76282e200"
+      },
+      "provenanceKind": "synthetic",
+      "generator": {
+        "id": "voxweaver-m1-authored-fixtures",
+        "version": "1.0.0",
+        "seed": "m1-golden:invalid-utf8-byte-sequence:v1"
+      },
+      "licenseExpression": "CC0-1.0",
+      "licenseEvidence": {
+        "relativePath": "licenses/AUTHORED-FOR-TEST.txt",
+        "sha256": "c7d2bb0d515724c5eef272ad622a90d729228332f00a477b3e66dda458b0f223"
+      },
+      "expected": {
+        "relativePath": "expected/invalid-utf8-byte-sequence.json",
+        "sha256": "534d846ff900af51f7c06ed4ecd21b29e68c32f592fe12c558c5bb9fd0d58649"
+      },
+      "applicableSchemaVersions": {
+        "fixtureExpected": 1,
+        "novelImport": 1,
+        "textReference": 1
+      }
+    },
+    {
+      "fixtureId": "unsupported-epub-opaque",
+      "purpose": [
+        "unsupported-epub"
+      ],
+      "input": {
+        "relativePath": "input/unsupported.epub",
+        "mediaType": "application/epub+zip",
+        "byteLength": 147,
+        "sha256": "3fbfbf2324e947f0bbf93302ee81a3255770fd31743475bb845c2822087e98cb"
+      },
+      "provenanceKind": "synthetic",
+      "generator": {
+        "id": "voxweaver-m1-authored-fixtures",
+        "version": "1.0.0",
+        "seed": "m1-golden:unsupported-epub-opaque:v1"
+      },
+      "licenseExpression": "CC0-1.0",
+      "licenseEvidence": {
+        "relativePath": "licenses/AUTHORED-FOR-TEST.txt",
+        "sha256": "c7d2bb0d515724c5eef272ad622a90d729228332f00a477b3e66dda458b0f223"
+      },
+      "expected": {
+        "relativePath": "expected/unsupported-epub-opaque.json",
+        "sha256": "eafc3f9e6465ac830e9ce7140bd4223a8ce72d9d8509c6cb1ed0140de6671925"
+      },
+      "applicableSchemaVersions": {
+        "fixtureExpected": 1,
+        "novelImport": 1,
+        "textReference": 1
+      }
+    }
+  ]
+}
