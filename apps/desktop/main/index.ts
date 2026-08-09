@@ -1,6 +1,10 @@
 import type { DesktopRequest } from '@voxweaver/contracts';
 import type { CoreMessageChannel, CoreProcessChild, CoreProcessLauncher } from './coreProcessManager.js';
-import type { DesktopTrustedRequestContext } from './desktopMainController.js';
+import type {
+  DesktopNovelImportPayloadEnvelope,
+  DesktopNovelImportTrustedRequestContext,
+  DesktopTrustedRequestContext,
+} from './desktopMainController.js';
 
 import { basename, join } from 'node:path';
 import {
@@ -72,6 +76,9 @@ function createDesktopController(manager: CoreProcessManager): DesktopMainContro
       async dispatch(request, trustedContext) {
         return dispatchToCore(manager, request, trustedContext);
       },
+      async dispatchNovelImport(request, trustedContext) {
+        return dispatchNovelImportToCore(manager, request, trustedContext);
+      },
     },
     directoryPicker: {
       async selectDirectory({ purpose, windowId }) {
@@ -90,6 +97,27 @@ function createDesktopController(manager: CoreProcessManager): DesktopMainContro
         return {
           displayName: basename(projectDirectory),
           projectDirectory,
+        };
+      },
+    },
+    novelSourceFilePicker: {
+      async selectSourceFile({ windowId }) {
+        const window = BrowserWindow.fromId(windowId);
+        if (!window || window !== mainWindow)
+          return undefined;
+
+        const result = await dialog.showOpenDialog(window, {
+          filters: [{ extensions: ['txt'], name: 'TXT 文本' }],
+          properties: ['openFile'],
+          title: '选择 TXT 小说源文件',
+        });
+        const sourceFilePath = result.canceled ? undefined : result.filePaths[0];
+        if (!sourceFilePath)
+          return undefined;
+
+        return {
+          displayName: basename(sourceFilePath),
+          sourceFilePath,
         };
       },
     },
@@ -116,6 +144,17 @@ async function dispatchToCore(
   ) {
     await manager.restartOnce();
   }
+
+  return manager.request(request, trustedContext);
+}
+
+async function dispatchNovelImportToCore(
+  manager: CoreProcessManager,
+  request: DesktopNovelImportPayloadEnvelope,
+  trustedContext: DesktopNovelImportTrustedRequestContext | undefined,
+): Promise<unknown> {
+  if (manager.status === 'stopped' || manager.status === 'starting')
+    await manager.start();
 
   return manager.request(request, trustedContext);
 }
@@ -212,6 +251,7 @@ if (!hasSingleInstanceLock) {
     coreManager = manager;
     desktopController = createDesktopController(manager);
     desktopController.registerIpcHandlers(ipcMain);
+    desktopController.registerNovelImportIpcHandlers(ipcMain);
     manager.subscribe(() => publishCoreState());
     mainWindow = createMainWindow();
 

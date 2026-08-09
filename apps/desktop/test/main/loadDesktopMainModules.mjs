@@ -9,7 +9,7 @@ const moduleCache = new Map();
 
 /**
  * Desktop sources use normal TypeScript ESM `.js` specifiers for Forge. Node
- * tests transpile the two small Main modules into a temporary ESM directory so
+ * tests transpile the small Main modules into a temporary ESM directory so
  * they exercise their real runtime behavior without adding a test loader.
  */
 export async function loadDesktopMainModule(moduleName) {
@@ -26,6 +26,10 @@ async function compileDesktopMainModules() {
     new URL('../../main/selectionTokenRegistry.ts', import.meta.url),
     'utf8',
   );
+  const novelSourceRegistry = await readFile(
+    new URL('../../main/novelSourceSelectionTokenRegistry.ts', import.meta.url),
+    'utf8',
+  );
   const controllerSource = await readFile(
     new URL('../../main/desktopMainController.ts', import.meta.url),
     'utf8',
@@ -36,10 +40,15 @@ async function compileDesktopMainModules() {
 
   const outputDirectory = await mkdtemp(join(tmpdir(), 'voxweaver-desktop-main-'));
   const registryFile = join(outputDirectory, 'selectionTokenRegistry.js');
+  const novelSourceRegistryFile = join(
+    outputDirectory,
+    'novelSourceSelectionTokenRegistry.js',
+  );
   const controllerFile = join(outputDirectory, 'desktopMainController.js');
 
   try {
     await writeFile(registryFile, transpile(registrySource));
+    await writeFile(novelSourceRegistryFile, transpile(novelSourceRegistry));
     await writeFile(
       controllerFile,
       transpile(controllerSource.replaceAll('@voxweaver/contracts', contractsUrl)),
@@ -47,6 +56,7 @@ async function compileDesktopMainModules() {
 
     return {
       controller: await import(pathToFileURL(controllerFile).href),
+      novelSourceRegistry: await import(pathToFileURL(novelSourceRegistryFile).href),
       registry: await import(pathToFileURL(registryFile).href),
     };
   } finally {

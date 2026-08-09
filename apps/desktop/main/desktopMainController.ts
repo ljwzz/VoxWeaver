@@ -1,6 +1,11 @@
 import type {
   DesktopError,
   DesktopMethodName,
+  DesktopNovelImportErrorCode,
+  DesktopNovelImportErrorV1,
+  DesktopNovelImportMethodName,
+  DesktopNovelImportMethodPayload,
+  DesktopNovelImportMethodResult,
   DesktopRequest,
   DesktopResponse,
   DirectorySelectionPurpose,
@@ -8,26 +13,45 @@ import type {
 } from '@voxweaver/contracts';
 
 import type {
+  IssuedNovelSourceSelection,
+  NovelSourceSelectionLease,
+  NovelSourceSelectionUseOutcome,
+  TrustedNovelSourceSelection,
+} from './novelSourceSelectionTokenRegistry.js';
+import type {
   IssuedDirectorySelection,
   SelectionTokenUseOutcome,
   TrustedDirectorySelection,
 } from './selectionTokenRegistry.js';
 
+import { basename, isAbsolute } from 'node:path';
+
 import {
   DESKTOP_METHOD_NAMES,
+  DESKTOP_NOVEL_IMPORT_CONTRACT_VERSION,
+  DESKTOP_NOVEL_IMPORT_ERROR_RETRYABILITY,
+  DESKTOP_NOVEL_IMPORT_METHOD_NAMES,
   DESKTOP_PROTOCOL_VERSION,
   DesktopMessageValidationError,
   DesktopMethodValidationError,
   parseDesktopMethodPayload,
   parseDesktopMethodResult,
+  parseDesktopNovelImportError,
+  parseDesktopNovelImportMethodPayload,
+  parseDesktopNovelImportMethodResult,
   parseDesktopRequest,
   parseDesktopResponse,
 } from '@voxweaver/contracts';
 
+import { NovelSourceSelectionTokenRegistry } from './novelSourceSelectionTokenRegistry.js';
 import { SelectionTokenRegistry } from './selectionTokenRegistry.js';
 
 const IPC_CHANNEL_PREFIX = 'voxweaver:';
 const INVALID_REQUEST_ID = 'invalid-request';
+const INVALID_PROJECT_ID = '00000000-0000-4000-8000-000000000000';
+const INVALID_PROJECT_SESSION_ID = '00000000-0000-4000-8000-000000000001';
+const UUID_V4_PATTERN
+  = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const CONFIRMATION_RETRY_CODES = new Set([
   'PROJECT_MIGRATION_CONFIRMATION_REQUIRED',
@@ -49,6 +73,14 @@ export interface DesktopCoreClient {
     request: DesktopRequest,
     trustedContext?: DesktopTrustedRequestContext,
   ) => Promise<unknown>;
+  /**
+   * M1-15A uses an independent, versioned envelope. The selected source path
+   * is supplied only in the second, Main/Core-private argument.
+   */
+  readonly dispatchNovelImport?: (
+    request: DesktopNovelImportPayloadEnvelope,
+    trustedContext?: DesktopNovelImportTrustedRequestContext,
+  ) => Promise<unknown>;
 }
 
 /** Private context that must never cross Main -> Preload -> Renderer. */
@@ -57,6 +89,38 @@ export interface DesktopTrustedRequestContext {
   readonly selectionPurpose?: DirectorySelectionPurpose;
   readonly selectionToken?: string;
 }
+
+/** Private source capability that must never cross Core/Main -> Renderer. */
+export interface DesktopNovelImportTrustedRequestContext {
+  readonly originalName: string;
+  readonly selectionToken: string;
+  readonly sourceFilePath: string;
+}
+
+export interface DesktopNovelImportPayloadEnvelope<
+  TMethod extends DesktopNovelImportMethodName = DesktopNovelImportMethodName,
+> {
+  readonly messageKind: 'payload';
+  readonly method: TMethod;
+  readonly payload: DesktopNovelImportMethodPayload<TMethod>;
+}
+
+export interface DesktopNovelImportResultEnvelope<
+  TMethod extends DesktopNovelImportMethodName = DesktopNovelImportMethodName,
+> {
+  readonly messageKind: 'result';
+  readonly method: TMethod;
+  readonly result: DesktopNovelImportMethodResult<TMethod>;
+}
+
+export interface DesktopNovelImportErrorEnvelope {
+  readonly messageKind: 'error';
+  readonly error: DesktopNovelImportErrorV1;
+}
+
+export type DesktopNovelImportIpcResponse
+  = | DesktopNovelImportErrorEnvelope
+    | DesktopNovelImportResultEnvelope;
 
 export interface DirectoryPicker {
   /** Return undefined on cancellation. Keep the absolute path private. */
@@ -71,9 +135,25 @@ export interface SelectedDirectory {
   readonly projectDirectory: string;
 }
 
+export interface NovelSourceFilePicker {
+  /** Return undefined on cancellation. Keep the absolute path private. */
+  readonly selectSourceFile: (input: {
+    readonly projectId: string;
+    readonly projectSessionId: string;
+    readonly windowId: number;
+  }) => Promise<SelectedNovelSourceFile | undefined>;
+}
+
+export interface SelectedNovelSourceFile {
+  readonly displayName: string;
+  readonly sourceFilePath: string;
+}
+
 export interface DesktopMainControllerOptions {
   readonly coreClient: DesktopCoreClient;
   readonly directoryPicker: DirectoryPicker;
+  readonly novelSourceFilePicker?: NovelSourceFilePicker;
+  readonly novelSourceSelections?: NovelSourceSelectionTokenRegistry;
   readonly selectionTokens?: SelectionTokenRegistry;
   /**
    * Main should pass BrowserWindow.fromWebContents(event.sender)?.id here.
@@ -89,6 +169,16 @@ export interface IpcMainLike {
   ) => void;
 }
 
+export interface NovelImportIpcMainLike {
+  readonly handle: (
+    channel: string,
+    listener: (
+      event: unknown,
+      request: unknown,
+    ) => Promise<DesktopNovelImportIpcResponse>,
+  ) => void;
+}
+
 /**
  * Validates Renderer requests, owns directory-selection capabilities, and
  * prevents absolute paths from entering a public desktop envelope.
@@ -96,12 +186,17 @@ export interface IpcMainLike {
 export class DesktopMainController {
   readonly #coreClient: DesktopCoreClient;
   readonly #directoryPicker: DirectoryPicker;
+  readonly #novelSourceFilePicker: NovelSourceFilePicker | undefined;
+  readonly #novelSourceSelections: NovelSourceSelectionTokenRegistry;
   readonly #selectionTokens: SelectionTokenRegistry;
   readonly #windowIdFromIpcEvent: (event: unknown) => number | undefined;
 
   constructor(options: DesktopMainControllerOptions) {
     this.#coreClient = options.coreClient;
     this.#directoryPicker = options.directoryPicker;
+    this.#novelSourceFilePicker = options.novelSourceFilePicker;
+    this.#novelSourceSelections = options.novelSourceSelections
+      ?? new NovelSourceSelectionTokenRegistry();
     this.#selectionTokens = options.selectionTokens ?? new SelectionTokenRegistry();
     this.#windowIdFromIpcEvent = options.windowIdFromIpcEvent ?? readWebContentsId;
   }
@@ -127,6 +222,26 @@ export class DesktopMainController {
     }
   }
 
+  /** Registers the independent M1-15A method channels. */
+  registerNovelImportIpcHandlers(ipcMain: NovelImportIpcMainLike): void {
+    for (const method of Object.values(DESKTOP_NOVEL_IMPORT_METHOD_NAMES)) {
+      ipcMain.handle(
+        desktopNovelImportIpcChannel(method),
+        async (event, input) => {
+          const windowId = this.#windowIdFromIpcEvent(event);
+          if (!isWindowId(windowId)) {
+            return this.#novelImportFailure(
+              method,
+              readNovelImportSession(input),
+              'DESKTOP_PAYLOAD_INVALID',
+            );
+          }
+          return this.#dispatchNovelImportForChannel(windowId, method, input);
+        },
+      );
+    }
+  }
+
   /**
    * Direct seam for Main tests and for IPC adapters that already resolved a
    * BrowserWindow. The input remains an untrusted Renderer envelope.
@@ -143,10 +258,239 @@ export class DesktopMainController {
     return this.#dispatchForChannel(windowId, undefined, input);
   }
 
+  /** Direct Main test seam for one M1-15A payload envelope. */
+  async dispatchNovelImport(
+    windowId: number,
+    method: DesktopNovelImportMethodName,
+    input: unknown,
+  ): Promise<DesktopNovelImportIpcResponse> {
+    if (!isWindowId(windowId)) {
+      return this.#novelImportFailure(
+        method,
+        readNovelImportSession(input),
+        'DESKTOP_PAYLOAD_INVALID',
+      );
+    }
+    return this.#dispatchNovelImportForChannel(windowId, method, input);
+  }
+
   /** Call this from BrowserWindow's `closed` event. */
   handleWindowClosed(windowId: number): void {
-    if (isWindowId(windowId))
+    if (isWindowId(windowId)) {
       this.#selectionTokens.invalidateWindow(windowId);
+      this.#novelSourceSelections.invalidateWindow(windowId);
+    }
+  }
+
+  async #dispatchNovelImportForChannel(
+    windowId: number,
+    method: DesktopNovelImportMethodName,
+    input: unknown,
+  ): Promise<DesktopNovelImportIpcResponse> {
+    let request: DesktopNovelImportPayloadEnvelope;
+    try {
+      request = parseNovelImportPayloadEnvelope(method, input);
+    } catch (error) {
+      return this.#novelImportFailure(
+        method,
+        readNovelImportSession(input),
+        novelImportInputErrorCode(error),
+      );
+    }
+
+    if (method === DESKTOP_NOVEL_IMPORT_METHOD_NAMES.SELECT_SOURCE) {
+      return this.#selectNovelSource(windowId, request);
+    }
+
+    let reservation: NovelSourceSelectionLease | undefined;
+    if (method === DESKTOP_NOVEL_IMPORT_METHOD_NAMES.START) {
+      reservation = this.#reserveNovelSource(windowId, request);
+      if (!reservation) {
+        return this.#novelImportFailure(
+          method,
+          request.payload,
+          'DESKTOP_SELECTION_INVALID',
+        );
+      }
+    }
+
+    const trustedContext = reservation
+      ? toNovelImportTrustedContext(reservation.selection)
+      : undefined;
+    let selectionOutcome: NovelSourceSelectionUseOutcome = 'failed';
+    try {
+      const response = await this.#dispatchNovelImportCore(request, trustedContext);
+      selectionOutcome = novelSourceSelectionOutcome(response);
+      return response;
+    } catch {
+      return this.#novelImportFailure(
+        method,
+        request.payload,
+        'DESKTOP_CORE_UNAVAILABLE',
+      );
+    } finally {
+      if (reservation)
+        this.#novelSourceSelections.settle(reservation, selectionOutcome);
+    }
+  }
+
+  async #selectNovelSource(
+    windowId: number,
+    request: DesktopNovelImportPayloadEnvelope,
+  ): Promise<DesktopNovelImportIpcResponse> {
+    const picker = this.#novelSourceFilePicker;
+    if (!picker) {
+      return this.#novelImportFailure(
+        request.method,
+        request.payload,
+        'DESKTOP_CORE_UNAVAILABLE',
+      );
+    }
+
+    let selected: SelectedNovelSourceFile | undefined;
+    try {
+      selected = await picker.selectSourceFile({
+        projectId: request.payload.projectId,
+        projectSessionId: request.payload.projectSessionId,
+        windowId,
+      });
+    } catch {
+      return this.#novelImportFailure(
+        request.method,
+        request.payload,
+        'DESKTOP_CORE_UNAVAILABLE',
+      );
+    }
+
+    if (!selected) {
+      return this.#novelImportSuccess(request.method, {
+        contractVersion: DESKTOP_NOVEL_IMPORT_CONTRACT_VERSION,
+        projectId: request.payload.projectId,
+        projectSessionId: request.payload.projectSessionId,
+        canceled: true,
+      });
+    }
+
+    let issued: IssuedNovelSourceSelection | undefined;
+    try {
+      assertSelectedNovelSource(selected);
+      issued = this.#novelSourceSelections.issue({
+        displayName: selected.displayName,
+        projectId: request.payload.projectId,
+        projectSessionId: request.payload.projectSessionId,
+        sourceFilePath: selected.sourceFilePath,
+        windowId,
+      });
+      return this.#novelImportSuccess(request.method, {
+        contractVersion: DESKTOP_NOVEL_IMPORT_CONTRACT_VERSION,
+        projectId: request.payload.projectId,
+        projectSessionId: request.payload.projectSessionId,
+        canceled: false,
+        displayName: selected.displayName,
+        expiresAt: issued.expiresAt,
+        selectionToken: issued.selectionToken,
+      });
+    } catch {
+      if (issued)
+        this.#novelSourceSelections.invalidate(issued.selectionToken);
+      return this.#novelImportFailure(
+        request.method,
+        request.payload,
+        'DESKTOP_SELECTION_INVALID',
+      );
+    }
+  }
+
+  #reserveNovelSource(
+    windowId: number,
+    request: DesktopNovelImportPayloadEnvelope,
+  ): NovelSourceSelectionLease | undefined {
+    const selectionToken = Reflect.get(request.payload, 'selectionToken');
+    if (typeof selectionToken !== 'string')
+      return undefined;
+    return this.#novelSourceSelections.reserve({
+      projectId: request.payload.projectId,
+      projectSessionId: request.payload.projectSessionId,
+      selectionToken,
+      windowId,
+    });
+  }
+
+  async #dispatchNovelImportCore(
+    request: DesktopNovelImportPayloadEnvelope,
+    trustedContext: DesktopNovelImportTrustedRequestContext | undefined,
+  ): Promise<DesktopNovelImportIpcResponse> {
+    if (!this.#coreClient.dispatchNovelImport)
+      throw new Error('The Core novel import route is unavailable.');
+
+    const rawResponse = await this.#coreClient.dispatchNovelImport(
+      request,
+      trustedContext,
+    );
+    if (!isRecord(rawResponse))
+      throw new Error('Core returned an invalid novel import response.');
+
+    if (rawResponse.messageKind === 'result') {
+      if (!hasExactKeys(rawResponse, ['messageKind', 'method', 'result']))
+        throw new Error('Core returned an invalid novel import result envelope.');
+      if (rawResponse.method !== request.method)
+        throw new Error('Core returned a result for another novel import method.');
+      const result = parseDesktopNovelImportMethodResult(
+        request.method,
+        rawResponse.result,
+      );
+      assertSameNovelImportSession(request.payload, result);
+      return {
+        messageKind: 'result',
+        method: request.method,
+        result,
+      } as DesktopNovelImportResultEnvelope;
+    }
+
+    if (rawResponse.messageKind === 'error') {
+      if (!hasExactKeys(rawResponse, ['messageKind', 'error']))
+        throw new Error('Core returned an invalid novel import error envelope.');
+      const error = parseDesktopNovelImportError(rawResponse.error);
+      assertSameNovelImportSession(request.payload, error);
+      if (error.method && error.method !== request.method)
+        throw new Error('Core returned an error for another novel import method.');
+      return {
+        messageKind: 'error',
+        error: sanitizeNovelImportError(request.method, error),
+      };
+    }
+
+    throw new Error('Core returned an unknown novel import message kind.');
+  }
+
+  #novelImportSuccess(
+    method: DesktopNovelImportMethodName,
+    result: unknown,
+  ): DesktopNovelImportResultEnvelope {
+    return {
+      messageKind: 'result',
+      method,
+      result: parseDesktopNovelImportMethodResult(method, result),
+    } as DesktopNovelImportResultEnvelope;
+  }
+
+  #novelImportFailure(
+    method: DesktopNovelImportMethodName,
+    session: NovelImportSession,
+    code: DesktopNovelImportErrorCode,
+  ): DesktopNovelImportErrorEnvelope {
+    return {
+      messageKind: 'error',
+      error: parseDesktopNovelImportError({
+        code,
+        contractVersion: DESKTOP_NOVEL_IMPORT_CONTRACT_VERSION,
+        message: 'The novel import request could not be completed.',
+        method,
+        projectId: session.projectId,
+        projectSessionId: session.projectSessionId,
+        retryable: DESKTOP_NOVEL_IMPORT_ERROR_RETRYABILITY[code],
+      }),
+    };
   }
 
   async #dispatchForChannel(
@@ -351,6 +695,146 @@ export class DesktopMainController {
 
 export function desktopIpcChannel(method: DesktopMethodName): string {
   return `${IPC_CHANNEL_PREFIX}${method}`;
+}
+
+export function desktopNovelImportIpcChannel(
+  method: DesktopNovelImportMethodName,
+): string {
+  return `${IPC_CHANNEL_PREFIX}${method}`;
+}
+
+interface NovelImportSession {
+  readonly projectId: string;
+  readonly projectSessionId: string;
+}
+
+function parseNovelImportPayloadEnvelope(
+  expectedMethod: DesktopNovelImportMethodName,
+  input: unknown,
+): DesktopNovelImportPayloadEnvelope {
+  if (
+    !isRecord(input)
+    || !hasExactKeys(input, ['messageKind', 'method', 'payload'])
+    || input.messageKind !== 'payload'
+    || input.method !== expectedMethod
+  ) {
+    throw new Error('The novel import payload envelope is invalid.');
+  }
+
+  return {
+    messageKind: 'payload',
+    method: expectedMethod,
+    payload: parseDesktopNovelImportMethodPayload(
+      expectedMethod,
+      input.payload,
+    ),
+  } as DesktopNovelImportPayloadEnvelope;
+}
+
+function novelImportInputErrorCode(
+  error: unknown,
+): DesktopNovelImportErrorCode {
+  return isRecord(error)
+    && Reflect.get(error, 'code') === 'DESKTOP_NOVEL_IMPORT_VERSION_UNSUPPORTED'
+    ? 'DESKTOP_PROTOCOL_UNSUPPORTED'
+    : 'DESKTOP_PAYLOAD_INVALID';
+}
+
+function readNovelImportSession(input: unknown): NovelImportSession {
+  const payload = isRecord(input) && isRecord(input.payload)
+    ? input.payload
+    : input;
+  if (!isRecord(payload)) {
+    return {
+      projectId: INVALID_PROJECT_ID,
+      projectSessionId: INVALID_PROJECT_SESSION_ID,
+    };
+  }
+
+  return {
+    projectId: isUuidV4(payload.projectId)
+      ? payload.projectId
+      : INVALID_PROJECT_ID,
+    projectSessionId: isUuidV4(payload.projectSessionId)
+      ? payload.projectSessionId
+      : INVALID_PROJECT_SESSION_ID,
+  };
+}
+
+function toNovelImportTrustedContext(
+  selection: TrustedNovelSourceSelection,
+): DesktopNovelImportTrustedRequestContext {
+  return {
+    originalName: selection.displayName,
+    selectionToken: selection.selectionToken,
+    sourceFilePath: selection.sourceFilePath,
+  };
+}
+
+function assertSelectedNovelSource(value: SelectedNovelSourceFile): void {
+  if (
+    value.displayName.length === 0
+    || !isAbsolute(value.sourceFilePath)
+    || basename(value.sourceFilePath) !== value.displayName
+  ) {
+    throw new Error('The source picker returned an invalid file selection.');
+  }
+}
+
+function assertSameNovelImportSession(
+  expected: NovelImportSession,
+  actual: NovelImportSession,
+): void {
+  if (
+    actual.projectId !== expected.projectId
+    || actual.projectSessionId !== expected.projectSessionId
+  ) {
+    throw new Error('Core returned a novel import response for another project session.');
+  }
+}
+
+function sanitizeNovelImportError(
+  method: DesktopNovelImportMethodName,
+  error: DesktopNovelImportErrorV1,
+): DesktopNovelImportErrorV1 {
+  return parseDesktopNovelImportError({
+    code: error.code,
+    contractVersion: DESKTOP_NOVEL_IMPORT_CONTRACT_VERSION,
+    ...(error.currentArtifactRevisionId
+      ? { currentArtifactRevisionId: error.currentArtifactRevisionId }
+      : {}),
+    message: 'The novel import request could not be completed.',
+    method,
+    ...(error.operationId ? { operationId: error.operationId } : {}),
+    projectId: error.projectId,
+    projectSessionId: error.projectSessionId,
+    retryable: DESKTOP_NOVEL_IMPORT_ERROR_RETRYABILITY[error.code],
+    ...(error.taskId ? { taskId: error.taskId } : {}),
+  });
+}
+
+function novelSourceSelectionOutcome(
+  response: DesktopNovelImportIpcResponse,
+): NovelSourceSelectionUseOutcome {
+  return response.messageKind === 'error'
+    && response.error.code === 'NOVEL_IMPORT_ENCODING_REQUIRED'
+    ? 'encoding-required'
+    : response.messageKind === 'result'
+      ? 'completed'
+      : 'failed';
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const keys = Object.keys(value);
+  return keys.length === expected.length
+    && expected.every(key => Object.hasOwn(value, key));
+}
+
+function isUuidV4(value: unknown): value is string {
+  return typeof value === 'string' && UUID_V4_PATTERN.test(value);
 }
 
 function readSelectionRequest(request: DesktopRequest): {
