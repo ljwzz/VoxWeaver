@@ -1,0 +1,22 @@
+{
+  "name": "@voxweaver/provider-core",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist ../../node_modules/.cache/voxweaver/provider-core.tsbuildinfo",
+    "test": "tsc -p tsconfig.json && node --test test/*.test.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:source": "tsc -p tsconfig.json --noEmit"
+  }
+}

@@ -8,10 +8,13 @@ const filenameCaseOptions = {
   ignore: [
     '.*.config.*',
     'app-core',
+    'llm-engine',
     'novel-domain',
     'novel-import',
     'package.json',
+    'provider-core',
     'project-workspace',
+    'speaker-analysis',
     'text-pipeline',
     'workflow-core',
     '[a-z]+.[jt]s',
