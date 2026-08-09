@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import * as packageEntry from '../dist/index.js';
 
-test('exposes only the M1-08 text pipeline runtime API', () => {
+test('exposes only the M1-09 text pipeline runtime API', () => {
   assert.deepEqual(Object.keys(packageEntry), [
     'CANONICALIZER_PROCESSOR_ID',
     'CANONICALIZER_PROCESSOR_VERSION',
@@ -18,15 +18,27 @@ test('exposes only the M1-08 text pipeline runtime API', () => {
     'ChapterIndexBuildError',
     'ChapterSlicingError',
     'DocumentBlockIndexValidationError',
+    'NORMALIZATION_PROPOSER_ID',
+    'NORMALIZATION_RULE_IDS',
+    'NORMALIZATION_RULE_VERSION',
+    'NORMALIZER_IDENTITY_RULE_ID',
+    'NORMALIZER_PROCESSOR_ID',
+    'NORMALIZER_PROCESSOR_VERSION',
+    'NormalizationExecutionError',
+    'NormalizationProposalValidationError',
     'TextTransformValidationError',
     'buildChapterIndexV1',
     'buildDocumentBlockIndexV1',
     'canonicalizeRawTextV1',
     'detectChapterCandidatesV1',
+    'discoverNormalizationProposalsV1',
+    'normalizeTextV1',
     'parseChapterHeadingV1',
     'parseChapterNumberV1',
     'restoreCanonicalTextFromCoverageV1',
+    'restoreCanonicalTextFromNormalizationV1',
     'sliceChapterCoverageV1',
     'sliceChapterIndexV1',
+    'validateNormalizationProposalsV1',
   ]);
 });

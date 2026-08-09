@@ -57,5 +57,42 @@ export {
   sliceChapterIndexV1,
 } from './chapterSlicer.js';
 
+export type {
+  DiscoverNormalizationProposalOptionsV1,
+  DiscoverNormalizationProposalsInputV1,
+  NormalizationProposalOperationV1,
+  NormalizationProposalRiskV1,
+  NormalizationProposalV1,
+  ValidateNormalizationProposalsInputV1,
+} from './normalizationProposal.js';
+export {
+  discoverNormalizationProposalsV1,
+  NORMALIZATION_PROPOSER_ID,
+  NORMALIZATION_RULE_IDS,
+  NORMALIZATION_RULE_VERSION,
+  NormalizationProposalValidationError,
+  validateNormalizationProposalsV1,
+} from './normalizationProposal.js';
+
+export type {
+  NormalizationAppliedChangeV1,
+  NormalizationApplyResultV1,
+  NormalizationDryRunResultV1,
+  NormalizationModeV1,
+  NormalizationPreviewChangeV1,
+  NormalizationSkippedProposalV1,
+  NormalizeTextInputV1,
+  NormalizeTextResultV1,
+  RestoreCanonicalTextInputV1,
+} from './normalizer.js';
+export {
+  NormalizationExecutionError,
+  NORMALIZER_IDENTITY_RULE_ID,
+  NORMALIZER_PROCESSOR_ID,
+  NORMALIZER_PROCESSOR_VERSION,
+  normalizeTextV1,
+  restoreCanonicalTextFromNormalizationV1,
+} from './normalizer.js';
+
 export { TextTransformValidationError } from './textTransform.js';
 export { DocumentBlockIndexValidationError } from '@voxweaver/novel-domain';
