@@ -1,0 +1,61 @@
+# Operating system and editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node.js
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+apps/desktop/.webpack/
+apps/desktop/out/
+apps/desktop/test/.generated/
+
+# Logs and local databases
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# Private or generated project data
+data/books/original/*
+!data/books/original/.gitkeep
+data/books/corrected/*
+!data/books/corrected/.gitkeep
+data/books/spoken/*
+!data/books/spoken/.gitkeep
+data/knowledge/*
+!data/knowledge/.gitkeep
+data/scripts/chapters/*
+!data/scripts/chapters/.gitkeep
+data/scripts/review-queue/*
+!data/scripts/review-queue/.gitkeep
+data/voices/*
+!data/voices/.gitkeep
+data/generated/raw/*
+!data/generated/raw/.gitkeep
+data/generated/approved/*
+!data/generated/approved/.gitkeep
+data/generated/rejected/*
+!data/generated/rejected/.gitkeep
+data/chapters/*
+!data/chapters/.gitkeep
+data/exports/*
+!data/exports/.gitkeep
