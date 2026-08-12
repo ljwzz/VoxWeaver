@@ -22,6 +22,7 @@ import {
 import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import { createProjectSourceFileDialogOptions } from './dialogConfig.ts';
 import { SelectionStore } from './selectionStore.ts';
+import { findWindowForAppActivation } from './windowActivation.ts';
 import { PROJECT_WINDOW_CONFIG, STARTUP_WINDOW_CONFIG } from './windowConfig.ts';
 
 // Keep the existing catalog location stable while productName controls visible branding.
@@ -451,8 +452,13 @@ app.whenReady().then(async () => {
   await createStartupWindow();
 
   app.on('activate', () => {
-    if (startupWindow && !startupWindow.isDestroyed())
-      focusWindow(startupWindow);
+    const activationWindow = findWindowForAppActivation(
+      Array.from(projectWindows.values(), session => session.window),
+      startupWindow,
+    );
+
+    if (activationWindow)
+      focusWindow(activationWindow);
     else
       void createStartupWindow();
   });
