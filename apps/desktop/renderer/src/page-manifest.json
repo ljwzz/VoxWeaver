@@ -4,8 +4,8 @@
     "title": "00A 项目启动",
     "group": "startup",
     "kind": "page",
-    "width": 1440,
-    "height": 900,
+    "width": 700,
+    "height": 450,
     "componentPath": "./pages/startup/StartupHomePage.vue"
   },
   {
@@ -13,8 +13,8 @@
     "title": "00B 新建项目 · 待选择",
     "group": "startup",
     "kind": "page",
-    "width": 1440,
-    "height": 900,
+    "width": 700,
+    "height": 450,
     "componentPath": "./pages/startup/NewProjectPage.vue"
   },
   {

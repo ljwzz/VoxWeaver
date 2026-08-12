@@ -1,88 +1,177 @@
 <script setup lang="ts">
-import PageDocument from '@/components/PageDocument.vue';
-import pageStyles1 from './styles.css?inline';
+import type { SelectionResult } from '@voxweaver/contracts';
 
-const bodyClasses = ["startup-screen", "startup-screen--new-project"] as const;
-const styleSheets = [pageStyles1] as const;
+import { FileText, FolderOpen, Info } from '@lucide/vue';
+import { normalizeProjectDisplayName, PROJECT_SOURCE_FILE_CONFIG } from '@voxweaver/contracts';
+import { computed, shallowRef } from 'vue';
+import { useRouter } from 'vue-router';
+import PageDocument from '@/components/PageDocument.vue';
+import pageStyles from './styles.css?inline';
+
+type FormState = 'failed' | 'idle' | 'ready' | 'running' | 'succeeded';
+
+const bodyClasses = ['startup-screen', 'startup-screen--new-project'] as const;
+const styleSheets = [pageStyles] as const;
+const router = useRouter();
+
+const displayName = shallowRef('');
+const directorySelection = shallowRef<SelectionResult>();
+const sourceSelection = shallowRef<SelectionResult>();
+const formState = shallowRef<FormState>('idle');
+const errorMessage = shallowRef('');
+const warningMessage = shallowRef('');
+const projectCreatedWithoutWindow = shallowRef(false);
+const supportedSourceFileExtensions = PROJECT_SOURCE_FILE_CONFIG.extensions
+  .map(extension => `.${extension}`)
+  .join('、');
+
+const normalizedName = computed(() => displayName.value.trim());
+const isNameValid = computed(() => {
+  try {
+    normalizeProjectDisplayName(displayName.value);
+    return true;
+  } catch {
+    return false;
+  }
+});
+const canCreate = computed(() => isNameValid.value
+  && Boolean(directorySelection.value)
+  && Boolean(sourceSelection.value)
+  && formState.value !== 'running'
+  && !projectCreatedWithoutWindow.value);
+
+function updateReadyState(): void {
+  if (formState.value === 'running' || formState.value === 'succeeded')
+    return;
+  formState.value = canCreate.value ? 'ready' : 'idle';
+  errorMessage.value = '';
+}
+
+async function selectDirectory(): Promise<void> {
+  const result = await window.voxweaver.selectProjectDirectory();
+  if (!result.ok) {
+    formState.value = 'failed';
+    errorMessage.value = result.error.message;
+    return;
+  }
+  if (result.value)
+    directorySelection.value = result.value;
+  updateReadyState();
+}
+
+async function selectSourceFile(): Promise<void> {
+  const result = await window.voxweaver.selectSourceFile();
+  if (!result.ok) {
+    formState.value = 'failed';
+    errorMessage.value = result.error.message;
+    return;
+  }
+  if (result.value)
+    sourceSelection.value = result.value;
+  updateReadyState();
+}
+
+async function createProject(): Promise<void> {
+  if (!canCreate.value || !directorySelection.value || !sourceSelection.value)
+    return;
+
+  formState.value = 'running';
+  errorMessage.value = '';
+  warningMessage.value = '';
+  const result = await window.voxweaver.createProject({
+    displayName: normalizedName.value,
+    directorySelectionId: directorySelection.value.selectionId,
+    sourceSelectionId: sourceSelection.value.selectionId,
+  });
+
+  if (!result.ok) {
+    formState.value = 'failed';
+    errorMessage.value = result.error.message;
+    projectCreatedWithoutWindow.value = result.error.code === 'PROJECT_WINDOW_OPEN_FAILED';
+    return;
+  }
+
+  formState.value = 'succeeded';
+  warningMessage.value = result.warnings?.join(' ') ?? '';
+  await router.replace({
+    path: '/startup',
+    query: warningMessage.value ? { notice: warningMessage.value } : {},
+  });
+}
+
+function cancel(): void {
+  if (formState.value !== 'running')
+    void router.push('/startup');
+}
+
+function handleNameInput(): void {
+  updateReadyState();
+}
 </script>
 
 <template>
-  <PageDocument
-    :body-classes="bodyClasses"
-    :style-sheets="styleSheets"
-  >
-    <main class="startup-stage">
-          <section class="desktop-window" aria-label="VoxWeaver 新建项目窗口">
-            <header class="window-titlebar">
-              <img
-                class="window-controls"
-                src="./assets/window-controls-new-project.svg"
-                width="52"
-                height="12"
-                alt=""
-                aria-hidden="true"
-              >
-              <p class="window-title">新建项目</p>
-              <span class="titlebar-balance" aria-hidden="true"></span>
-            </header>
+  <PageDocument :body-classes="bodyClasses" :style-sheets="styleSheets">
+    <main class="startup-shell" aria-label="VoxWeaver 新建项目窗口">
+      <header class="native-titlebar">
+        <span>新建项目</span>
+      </header>
 
-            <div class="new-project-body">
-              <div class="new-project-content">
-                <header class="new-project-header">
-                  <div class="header-copy">
-                    <h1>新建项目</h1>
-                    <p>选择项目存放文件夹与源文件；两项均为必填</p>
-                  </div>
-                  <div class="step-status" aria-label="当前步骤：步骤 1 / 1，选择输入">
-                    <img src="./assets/current-step.svg" width="8" height="8" alt="" aria-hidden="true">
-                    <span>步骤 1 / 1 · 选择输入</span>
-                  </div>
-                </header>
+      <form class="new-project-form" @submit.prevent="createProject">
+        <div class="project-field">
+          <label for="project-name">项目名称</label>
+          <input
+            id="project-name"
+            v-model="displayName"
+            type="text"
+            autocomplete="off"
+            :disabled="formState === 'running' || projectCreatedWithoutWindow"
+            @input="handleNameInput"
+          >
+        </div>
 
-                <section class="project-inputs" aria-label="项目输入展示状态">
-                  <article class="input-card">
-                    <span class="input-step input-step--current">1</span>
-                    <div class="input-field">
-                      <h2>项目存放文件夹</h2>
-                      <p class="input-description">将在所选位置创建独立的 VoxWeaver 项目目录</p>
-                      <div class="selector-row">
-                        <div class="selector-placeholder">请选择项目存放文件夹</div>
-                        <span class="secondary-button" aria-disabled="true">选择文件夹</span>
-                      </div>
-                    </div>
-                  </article>
+        <div class="project-field">
+          <label>项目目录</label>
+          <div class="project-selector">
+            <span :class="{ 'project-selector-placeholder': !directorySelection }" :title="directorySelection?.displayPath">
+              {{ directorySelection?.displayPath ?? '请选择空文件夹' }}
+            </span>
+            <button type="button" :disabled="formState === 'running' || projectCreatedWithoutWindow" @click="selectDirectory">
+              <FolderOpen :size="15" aria-hidden="true" />选择目录
+            </button>
+          </div>
+        </div>
 
-                  <article class="input-card">
-                    <span class="input-step">2</span>
-                    <div class="input-field">
-                      <h2>源文件</h2>
-                      <p class="input-description">创建时按原始字节复制；格式识别在进入项目后进行</p>
-                      <div class="selector-row">
-                        <div class="selector-placeholder">请选择源文件</div>
-                        <span class="secondary-button" aria-disabled="true">选择文件</span>
-                      </div>
-                    </div>
-                  </article>
-                </section>
+        <div class="project-field">
+          <label>源文件</label>
+          <span class="project-field-hint">当前仅支持 {{ supportedSourceFileExtensions }}</span>
+          <div class="project-selector">
+            <span :class="{ 'project-selector-placeholder': !sourceSelection }" :title="sourceSelection?.displayPath">
+              {{ sourceSelection?.displayPath ?? '请选择小说源文件' }}
+            </span>
+            <button type="button" :disabled="formState === 'running' || projectCreatedWithoutWindow" @click="selectSourceFile">
+              <FileText :size="15" aria-hidden="true" />选择文件
+            </button>
+          </div>
+        </div>
 
-                <aside class="creation-boundary">
-                  <span class="boundary-icon" aria-hidden="true">i</span>
-                  <div>
-                    <h2>创建项目时</h2>
-                    <p>只复制并登记源文件，不在此步骤执行格式识别、文本提取、章节分析或 Provider 请求。全部创建步骤成功后进入项目；失败时保留仍有效的输入并允许重试。</p>
-                  </div>
-                </aside>
-              </div>
-            </div>
+        <p v-if="errorMessage" class="form-message form-message--error" role="alert">
+          <Info :size="14" aria-hidden="true" />{{ errorMessage }}
+        </p>
+        <p v-else-if="warningMessage" class="form-message" role="status">
+          <Info :size="14" aria-hidden="true" />{{ warningMessage }}
+        </p>
 
-            <footer class="new-project-footer">
-              <p>2 项必填 · 尚未选择</p>
-              <div class="footer-actions" aria-label="新建项目操作展示状态">
-                <span class="footer-button" aria-disabled="true">取消</span>
-                <span class="footer-button footer-button--disabled" aria-disabled="true">下一步</span>
-              </div>
-            </footer>
-          </section>
-        </main>
+        <footer class="new-project-actions">
+          <div>
+            <button class="button-secondary" type="button" :disabled="formState === 'running'" @click="cancel">
+              {{ projectCreatedWithoutWindow ? '返回启动页' : '取消' }}
+            </button>
+            <button class="button-primary" type="submit" :disabled="!canCreate">
+              {{ formState === 'running' ? '正在创建…' : '创建并打开项目' }}
+            </button>
+          </div>
+        </footer>
+      </form>
+    </main>
   </PageDocument>
 </template>

@@ -3,7 +3,10 @@ import type { RouteRecordRaw } from 'vue-router';
 import { createRouter, createWebHashHistory } from 'vue-router';
 import NotFoundPage from '@/components/NotFoundPage.vue';
 import PageCatalog from '@/components/PageCatalog.vue';
-import { appPages, defaultPagePath } from '@/pages';
+import { appPages } from '@/pages';
+import NewProjectPage from '@/pages/startup/NewProjectPage.vue';
+import StartupHomePage from '@/pages/startup/StartupHomePage.vue';
+import WorkspaceTextPage from '@/pages/workspace/WorkspaceTextPage.vue';
 
 const pageRoutes: RouteRecordRaw[] = appPages.map(page => ({
   component: page.component,
@@ -20,7 +23,25 @@ export const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: defaultPagePath,
+      redirect: '/startup',
+    },
+    {
+      component: StartupHomePage,
+      meta: { pageTitle: 'VoxWeaver' },
+      name: 'startup',
+      path: '/startup',
+    },
+    {
+      component: NewProjectPage,
+      meta: { pageTitle: 'VoxWeaver · 新建项目' },
+      name: 'new-project',
+      path: '/new-project',
+    },
+    {
+      component: WorkspaceTextPage,
+      meta: { pageTitle: 'VoxWeaver · 项目工作台' },
+      name: 'project',
+      path: '/project',
     },
     {
       component: PageCatalog,

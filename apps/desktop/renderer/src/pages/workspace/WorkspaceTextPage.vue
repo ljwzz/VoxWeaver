@@ -1,155 +1,122 @@
 <script setup lang="ts">
-import PageDocument from '@/components/PageDocument.vue';
-import pageStyles1 from './styles.css?inline';
+import type { ProjectSummary } from '@voxweaver/contracts';
 
-const bodyClasses = ["workspace-view","workspace-view--text"] as const;
-const styleSheets = [pageStyles1] as const;
+import { AudioLines, FileText, Info, Settings, SlidersHorizontal, UsersRound, X } from '@lucide/vue';
+import { onMounted, shallowRef } from 'vue';
+import PageDocument from '@/components/PageDocument.vue';
+import pageStyles from './styles.css?inline';
+
+const bodyClasses = ['workspace-view', 'workspace-view--project'] as const;
+const styleSheets = [pageStyles] as const;
+const project = shallowRef<ProjectSummary>();
+const errorMessage = shallowRef('');
+const isClosing = shallowRef(false);
+
+async function loadProjectContext(): Promise<void> {
+  const result = await window.voxweaver.getWindowContext();
+  if (!result.ok) {
+    errorMessage.value = result.error.message;
+    return;
+  }
+
+  if (result.value.kind !== 'project') {
+    errorMessage.value = '当前窗口没有已打开的项目。';
+    return;
+  }
+
+  project.value = result.value.project;
+  document.title = `VoxWeaver · ${result.value.project.displayName}`;
+}
+
+async function closeProject(): Promise<void> {
+  if (isClosing.value)
+    return;
+  isClosing.value = true;
+  const result = await window.voxweaver.closeCurrentProject();
+  if (!result.ok) {
+    isClosing.value = false;
+    errorMessage.value = result.error.message;
+  }
+}
+
+onMounted(() => {
+  void loadProjectContext();
+});
 </script>
 
 <template>
-  <PageDocument
-    :body-classes="bodyClasses"
-    :style-sheets="styleSheets"
-  >
-    <main class="workspace" aria-label="VoxWeaver 项目工作台静态展示">
-          <header class="window-titlebar">
-            <img
-              class="window-controls"
-              src="./assets/window-controls.svg"
-              width="42"
-              height="10"
-              alt=""
-              aria-hidden="true"
-            >
-            <p class="window-title">VoxWeaver · 示例小说</p>
-            <p class="window-context">项目工作台</p>
-          </header>
+  <PageDocument :body-classes="bodyClasses" :style-sheets="styleSheets">
+    <main class="project-workspace" aria-label="VoxWeaver 项目工作台">
+      <header class="project-titlebar">
+        <p>{{ project ? `VoxWeaver · ${project.displayName}` : 'VoxWeaver · 项目工作台' }}</p>
+        <span>项目工作台</span>
+        <button type="button" :disabled="isClosing" title="关闭当前项目窗口" @click="closeProject">
+          <X :size="15" aria-hidden="true" />
+          {{ isClosing ? '正在关闭' : '关闭项目' }}
+        </button>
+      </header>
 
-          <div class="workspace-body">
-            <aside class="activity-rail" aria-label="功能分组展示状态">
-              <div class="activity-list">
-                <div class="activity-item activity-item--selected" aria-label="文本整理，当前选中">
-                  <span class="activity-glyph">文</span>
-                  <span class="selection-bar" aria-hidden="true"></span>
-                </div>
-                <div class="activity-item activity-item--role" aria-label="角色管理，展示状态">
-                  <span class="activity-glyph">角</span>
-                  <span class="activity-marker" aria-hidden="true">!</span>
-                </div>
-                <div class="activity-item activity-item--audio" aria-label="音频生成，展示状态">
-                  <span class="activity-glyph">音</span>
-                  <span class="activity-marker" aria-hidden="true">◔</span>
-                </div>
-                <div class="activity-item activity-item--post" aria-label="后期处理，展示状态">
-                  <span class="activity-glyph">后</span>
-                  <span class="activity-marker" aria-hidden="true">↻</span>
-                </div>
-              </div>
-              <div class="activity-item" aria-label="设置，展示状态">
-                <span class="activity-glyph">设</span>
-              </div>
-            </aside>
-
-            <aside class="context-sidebar" aria-label="文本整理上下文侧栏">
-              <div class="sidebar-content">
-                <div class="sidebar-top">
-                  <header class="sidebar-header">
-                    <div class="sidebar-heading-row">
-                      <h1>文本整理</h1>
-                      <span class="sidebar-actions" aria-hidden="true">
-                        <span>＋</span>
-                        <span>⋯</span>
-                      </span>
-                    </div>
-                    <p class="sidebar-subtitle sidebar-subtitle--wide">5 个子功能 · 12 项待复核</p>
-                    <p class="sidebar-subtitle sidebar-subtitle--compact">1280×800 · 5 个子功能</p>
-                  </header>
-
-                  <div class="sidebar-item sidebar-item--selected" aria-label="文本提取，已选择">
-                    <span class="sidebar-state" aria-hidden="true">✓</span>
-                    <span class="sidebar-label">文本提取</span>
-                    <span class="sidebar-count">1</span>
-                  </div>
-                  <div class="sidebar-item sidebar-item--processing" aria-label="章节切割，处理中">
-                    <span class="sidebar-state" aria-hidden="true">◔</span>
-                    <span class="sidebar-label">章节切割</span>
-                    <span class="sidebar-count">36</span>
-                  </div>
-                  <div class="sidebar-item sidebar-item--review" aria-label="错别字与标点，待复核">
-                    <span class="sidebar-state" aria-hidden="true">!</span>
-                    <span class="sidebar-label">错别字与标点</span>
-                    <span class="sidebar-count">12</span>
-                  </div>
-                  <div class="sidebar-item sidebar-item--failed" aria-label="角色提取，失败">
-                    <span class="sidebar-state" aria-hidden="true">×</span>
-                    <span class="sidebar-label">角色提取</span>
-                    <span class="sidebar-count">2</span>
-                  </div>
-                  <div class="sidebar-item sidebar-item--stale" aria-label="剧本管理，已失效">
-                    <span class="sidebar-state" aria-hidden="true">↻</span>
-                    <span class="sidebar-label">剧本管理</span>
-                    <span class="sidebar-count">3</span>
-                  </div>
-                </div>
-
-                <section class="sidebar-summary" aria-label="项目摘要">
-                  <h2>示例小说</h2>
-                  <p>36 章 · 总进度 62%</p>
-                </section>
-              </div>
-
-              <div class="resize-handle" aria-label="侧栏宽度调整入口，仅展示" aria-disabled="true">
-                <span aria-hidden="true"></span>
-              </div>
-            </aside>
-
-            <section class="editor" aria-label="文本提取编辑区">
-              <header class="editor-toolbar">
-                <div class="toolbar-context">
-                  <strong>文本提取</strong>
-                  <span>·</span>
-                  <span class="toolbar-context--wide">示例小说.epub · EPUB / UTF-8</span>
-                  <span class="toolbar-context--compact">1280×800 紧凑视口</span>
-                </div>
-
-                <div class="toolbar-actions" aria-label="编辑区操作展示状态">
-                  <span class="icon-button" aria-disabled="true">⋯</span>
-                  <span class="toolbar-button toolbar-button--secondary" aria-disabled="true">查看问题</span>
-                  <span class="toolbar-button toolbar-button--primary" aria-disabled="true">提取文本</span>
-                </div>
-              </header>
-
-              <div class="editor-content">
-                <p class="eyebrow">项目工作台</p>
-                <h2>继续整理《示例小说》</h2>
-                <p class="editor-description">当前停留在第 3 章。工作台壳层用于承载导航、状态和上下文，不替代具体业务页面。</p>
-
-                <section class="state-summary" aria-label="项目状态摘要">
-                  <article class="summary-card">
-                    <p>当前章节</p>
-                    <strong>第 3 章 · 雨夜</strong>
-                  </article>
-                  <article class="summary-card">
-                    <p>总进度</p>
-                    <strong>62% · 22 / 36 章</strong>
-                  </article>
-                  <article class="summary-card">
-                    <p>待复核</p>
-                    <strong>12 项</strong>
-                  </article>
-                  <article class="summary-card">
-                    <p>已失效</p>
-                    <strong>3 项</strong>
-                  </article>
-                </section>
-
-                <section class="continue-card" aria-label="继续上次工作，仅展示">
-                  <h3>继续上次工作</h3>
-                  <p>章节切割 · 第 3 章边界待确认</p>
-                </section>
-              </div>
-            </section>
+      <div class="project-workspace-body">
+        <aside class="project-activity-rail" aria-label="项目功能">
+          <div>
+            <button class="project-activity-button project-activity-button--current" type="button" disabled title="文本整理后续实现">
+              <FileText :size="21" aria-hidden="true" />
+              <span>文本</span>
+            </button>
+            <button class="project-activity-button" type="button" disabled title="角色管理后续实现">
+              <UsersRound :size="21" aria-hidden="true" />
+              <span>角色</span>
+            </button>
+            <button class="project-activity-button" type="button" disabled title="音频生成后续实现">
+              <AudioLines :size="21" aria-hidden="true" />
+              <span>音频</span>
+            </button>
+            <button class="project-activity-button" type="button" disabled title="后期处理后续实现">
+              <SlidersHorizontal :size="21" aria-hidden="true" />
+              <span>后期</span>
+            </button>
           </div>
-        </main>
+          <button class="project-activity-button" type="button" disabled title="项目设置后续实现">
+            <Settings :size="21" aria-hidden="true" />
+            <span>设置</span>
+          </button>
+        </aside>
+
+        <aside class="project-summary-sidebar">
+          <p class="project-sidebar-eyebrow">当前项目</p>
+          <h1>{{ project?.displayName ?? '正在读取项目…' }}</h1>
+          <dl v-if="project">
+            <div>
+              <dt>源文件</dt>
+              <dd :title="project.sourceFileName">{{ project.sourceFileName }}</dd>
+            </div>
+            <div>
+              <dt>创建时间</dt>
+              <dd>{{ new Date(project.createdAt).toLocaleString() }}</dd>
+            </div>
+          </dl>
+          <p class="project-sidebar-note">项目名称来自创建时的明确输入，不依赖源文件名。</p>
+        </aside>
+
+        <section class="project-empty-workbench">
+          <div v-if="errorMessage" class="project-context-error" role="alert">
+            <Info :size="28" aria-hidden="true" />
+            <h2>无法读取项目</h2>
+            <p>{{ errorMessage }}</p>
+          </div>
+          <div v-else class="project-ready-state">
+            <span class="project-ready-icon"><FileText :size="30" aria-hidden="true" /></span>
+            <p class="project-ready-eyebrow">项目已打开</p>
+            <h2>{{ project?.displayName ?? '正在载入…' }}</h2>
+            <p>项目清单、状态库和源文件副本已通过校验。</p>
+            <div class="project-next-step">
+              <Info :size="16" aria-hidden="true" />
+              <span>文本提取、章节分析和其他后续处理尚未实现。</span>
+            </div>
+            <button type="button" disabled>开始文本处理 · 后续实现</button>
+          </div>
+        </section>
+      </div>
+    </main>
   </PageDocument>
 </template>

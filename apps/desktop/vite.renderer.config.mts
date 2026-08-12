@@ -13,6 +13,9 @@ export default defineConfig({
     emptyOutDir: true,
     outDir: path.resolve(desktopRoot, '.vite/renderer/main_window'),
   },
+  optimizeDeps: {
+    exclude: ['@voxweaver/contracts'],
+  },
   plugins: [
     vue(),
   ],

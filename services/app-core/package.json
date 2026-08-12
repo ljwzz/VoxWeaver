@@ -1,0 +1,22 @@
+{
+  "name": "@voxweaver/app-core",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@voxweaver/application": "workspace:*",
+    "@voxweaver/contracts": "workspace:*",
+    "@voxweaver/project-workspace": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "6.0.3"
+  }
+}

@@ -10,6 +10,7 @@
   },
   "scripts": {
     "dev": "corepack pnpm --filter @voxweaver/desktop start",
+    "dev:debug": "VOXWEAVER_OPEN_DEVTOOLS=1 corepack pnpm --filter @voxweaver/desktop start",
     "start": "corepack pnpm run dev",
     "package": "corepack pnpm --filter @voxweaver/desktop package",
     "make": "corepack pnpm --filter @voxweaver/desktop make",
@@ -20,9 +21,10 @@
     "lint:js:fix": "eslint . --fix",
     "lint:style:check": "stylelint 'apps/desktop/renderer/src/**/*.{css,vue}'",
     "lint:style:fix": "stylelint 'apps/desktop/renderer/src/**/*.{css,vue}' --fix",
-    "typecheck": "corepack pnpm --filter @voxweaver/desktop typecheck",
+    "typecheck": "corepack pnpm -r --if-present run typecheck",
+    "test": "corepack pnpm -r --if-present run test",
     "check:pages": "corepack pnpm --filter @voxweaver/desktop run check:pages",
-    "check": "corepack pnpm run lint && corepack pnpm run typecheck && corepack pnpm run check:pages",
+    "check": "corepack pnpm run lint && corepack pnpm run typecheck && corepack pnpm run test && corepack pnpm run check:pages",
     "prepare": "husky"
   },
   "devDependencies": {

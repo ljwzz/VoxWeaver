@@ -9,6 +9,8 @@ trustPolicyExclude:
 
 packages:
   - apps/*
+  - packages/*
+  - services/*
 
 # Electron Forge 7.11.2 通过 @electron/rebuild 引用官方 @electron/node-gyp Git 依赖。
 blockExoticSubdeps: false

@@ -6,6 +6,7 @@ import { MakerZIP } from '@electron-forge/maker-zip';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { createBrandedDevelopmentRuntimePlugin } from './scripts/brandedDevelopmentRuntime.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -41,12 +42,14 @@ const config: ForgeConfig = {
     appCategoryType: 'public.app-category.productivity',
     asar: true,
     executableName: 'VoxWeaver',
+    icon: path.resolve(__dirname, 'assets/app-icon'),
     name: 'VoxWeaver',
   },
   makers: [
     new MakerZIP({}, ['darwin']),
   ],
   plugins: [
+    createBrandedDevelopmentRuntimePlugin(),
     new VitePlugin({
       build: [
         {

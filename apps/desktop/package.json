@@ -1,5 +1,6 @@
 {
   "name": "@voxweaver/desktop",
+  "productName": "VoxWeaver",
   "type": "commonjs",
   "version": "0.1.0",
   "private": true,
@@ -8,9 +9,14 @@
     "start": "PNPM_CONFIG_PM_ON_FAIL=warn electron-forge start",
     "package": "PNPM_CONFIG_PM_ON_FAIL=warn electron-forge package --platform=darwin --arch=arm64",
     "make": "PNPM_CONFIG_PM_ON_FAIL=warn electron-forge make --platform=darwin --arch=arm64",
+    "check:pages": "node scripts/check-pages.mjs",
+    "test": "vitest run --config vitest.config.mts",
     "typecheck": "tsc --project tsconfig.main.json --noEmit && vue-tsc --project tsconfig.renderer.json --noEmit"
   },
   "dependencies": {
+    "@lucide/vue": "1.31.0",
+    "@voxweaver/app-core": "workspace:*",
+    "@voxweaver/contracts": "workspace:*",
     "element-plus": "2.14.4",
     "vue": "3.5.41",
     "vue-router": "5.2.0"
@@ -25,9 +31,12 @@
     "@types/node": "24.13.3",
     "@vitejs/plugin-vue": "6.0.8",
     "@vue/compiler-sfc": "3.5.41",
+    "@vue/test-utils": "2.4.11",
     "electron": "43.3.0",
+    "happy-dom": "20.11.2",
     "typescript": "6.0.3",
     "vite": "8.2.1",
+    "vitest": "4.1.10",
     "vue-tsc": "3.3.9"
   }
 }

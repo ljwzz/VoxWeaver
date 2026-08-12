@@ -4,4 +4,7 @@ export default defineConfig({
   build: {
     sourcemap: true,
   },
+  ssr: {
+    noExternal: [/^@voxweaver\//u],
+  },
 });

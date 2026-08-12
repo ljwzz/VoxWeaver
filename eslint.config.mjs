@@ -55,4 +55,9 @@ export default antfu({
   rules: {
     'node/prefer-global/process': 'off',
   },
+}, {
+  files: ['packages/**/*.test.ts', 'services/**/*.test.ts'],
+  rules: {
+    'test/no-import-node-test': 'off',
+  },
 });

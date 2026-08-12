@@ -60,7 +60,9 @@ VoxWeaver 计划覆盖以下制作环节：
 
 ## 本地开发
 
-当前工程使用 Electron Forge、Vite、Vue、Vue Router 与 Element Plus。项目启动、工作台、文本、角色、音频、后期和设置共 45 个页面组件已经接入真实前端路由；48 个展示状态继续使用固定本地数据，不接入业务 API、SQLite、Provider 或任务调度。
+当前工程使用 Electron Forge、Vite、Vue、Vue Router、Element Plus 与 Lucide Vue。项目启动流程已接入真实的项目名称、空目录与源文件选择，可创建或校验项目 manifest、项目 SQLite 和不可变源文件副本，并通过独立工作台窗口多开不同项目。启动页的最近项目目录使用应用级 SQLite 保存。
+
+文本、角色、音频、后期和设置页面仍属于后续功能或设计预览，不接入 Provider、文本处理和任务调度；未实现入口在真实工作台中保持禁用。
 
 环境版本见 [`.nvmrc`](./.nvmrc) 与 [`package.json`](./package.json)。在仓库根目录执行：
 
@@ -78,7 +80,7 @@ corepack pnpm run package
 
 本地包输出到 `apps/desktop/out/VoxWeaver-darwin-arm64/VoxWeaver.app`。打包流程仅执行本机 ad-hoc 签名和完整性校验，不包含 Developer ID 签名、公证或发布。
 
-`check` 会校验代码规范、类型、48 条路由映射、45 个 Vue 页面、本地资源与静态展示边界。
+`check` 会校验代码规范、类型、项目与 catalog 测试、Vue 页面交互、48 条设计预览路由映射和生产窗口边界。
 
 ## 项目文档
 
