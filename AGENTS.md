@@ -1,36 +1,31 @@
-# 仓库协作要求
+# Repository Guidelines
 
-## 文档组织
+## Project Structure & Module Organization
 
-1. 文档采用逐层披露结构。
-2. 根 `README.md` 提供项目概览和统一的文档导航入口。
-3. `docs/README.md` 路由项目计划、步骤规格和想法档案。
-4. 各子目录索引继续路由对应主题的具体文件。
-5. 上层文档聚焦目标和入口，下层文档承载对应层级的内容。
+VoxWeaver is a pnpm monorepo. `apps/desktop/` contains the Electron Forge application: `main/` for the main process, `preload/` for the bridge, and `renderer/src/` for Vue pages, styles, and local assets. Shared TypeScript modules live in `packages/`: `contracts` defines cross-layer data contracts, `application` holds use cases and ports, and `project-workspace` manages project files. `services/app-core/` coordinates application services and the SQLite project catalog. Keep tests beside their subjects as `*.test.ts`.
 
-## 设计阶段描述
+Documentation starts at `README.md`, then routes through `docs/README.md` to `docs/spec/` and `docs/ideas/`. Do not edit generated content under `apps/desktop/.vite/` or `apps/desktop/out/`.
 
-1. 项目进入编码阶段前，功能设计允许反复调整；设计文件始终描述当前确认的目标状态，不保留功能从旧方案变更到新方案的过程性叙述。
-2. 功能被取消或替换时，直接删除旧功能描述或改写为新功能描述，避免使用“原计划实现 A，现不实现 A”“A 改为 A'”等逆向或变更历史式表述。
-3. 仅当某个上层功能按通常理解或默认范围会包含某项子功能，且不明确排除就会使该子功能进入后续开发流程时，才显式记录该子功能不实现或不在范围内。
-4. 本规则只约束设计内容的表达方式，不要求在项目文档中记录设计变更历史。
+## Build, Test, and Development Commands
 
-## 应用配置边界
+Use Node `v24.13.0` (`.nvmrc`) and the pnpm version declared in `package.json`.
 
-1. Vite 和 Electron Forge 配置只承载构建、开发服务器、插件、打包和资源处理选项。
-2. 支持格式、业务限制、默认值、阈值、超时等产品行为配置不得定义在 `vite*.config.*`、Vite `define` 或 `import.meta.env` 中。
-3. 产品行为配置必须放在规则所属模块的独立、类型化配置文件中；跨层使用时保持单一真值源，并在可信业务边界执行校验。
+- `corepack pnpm install` installs the locked workspace dependencies.
+- `corepack pnpm run dev` starts Electron Forge with the Vite renderer; use `dev:debug` to open DevTools.
+- `corepack pnpm run check` runs ESLint, Stylelint, TypeScript checks, all tests, and page-manifest validation.
+- `corepack pnpm run package` builds the local macOS arm64 application; `make` creates the distributable archive.
+- `corepack pnpm --filter @voxweaver/desktop test` runs only desktop tests during iteration.
 
-## 想法记录
+## Coding Style & Naming Conventions
 
-1. 收到产品想法、候选能力或优化方向时，先分析目标与价值、流程位置、依赖关系和约束。
-2. 按实际业务步骤整理相关想法，并写入 `docs/ideas/` 下的独立文件。
-3. 想法文件采用以下结构：
-   - 目标与价值；
-   - 所处流程步骤；
-   - 功能要求；
-   - 数据与状态要求；
-   - 依赖和约束；
-   - 待确认问题；
-   - 建议的后续落地阶段。
-4. 用户确认范围或启动实施后，再将对应内容转入项目计划、正式决策或实施任务。
+Use two-space indentation, LF endings, a final newline, single quotes, semicolons, and 1TBS braces. ESLint and Stylelint are authoritative; run `corepack pnpm run lint:fix` before submitting broad formatting changes. Vue SFCs use `script`, `template`, then `style`; component names are PascalCase. Follow existing camelCase TypeScript module names and `*.test.ts` test names.
+
+Keep product rules, defaults, thresholds, and timeouts in typed module configuration. Vite, Electron Forge, `define`, and `import.meta.env` are for build/runtime wiring, not business behavior.
+
+## Testing Guidelines
+
+Desktop and renderer tests use Vitest; packages and services use Node's test runner. Add focused regression tests for behavior changes and keep fixtures local to the owning module. No numeric coverage gate is configured, so review changed branches explicitly. Run the targeted package test while developing and the root `check` before opening a pull request.
+
+## Commit & Pull Request Guidelines
+
+Use lowercase Conventional Commit types such as `feat`, `fix`, `docs`, `refactor`, or `test`: `fix: 修复程序坞激活逻辑`. Keep headers at most 72 characters and omit a trailing period. Each commit and pull request should address one concern. Pull requests must summarize behavior and risk, list verification commands, link the relevant issue, and include screenshots or a short recording for renderer changes.
