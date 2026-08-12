@@ -1,0 +1,156 @@
+:root {
+  --vw-focus-ring: #8fb8b3;
+}
+
+.workspace-view--sidebar-expanded .context-sidebar {
+  width: 300px;
+  min-width: 300px;
+}
+
+.workspace-view--sidebar-expanded .sidebar-content,
+.workspace-view--sidebar-expanded .sidebar-top {
+  width: 294px;
+}
+
+.workspace-view--sidebar-expanded .sidebar-header {
+  width: 294px;
+}
+
+.workspace-view--sidebar-expanded .sidebar-heading-row,
+.workspace-view--sidebar-expanded .sidebar-subtitle {
+  width: 228px;
+}
+
+.workspace-view--sidebar-expanded .sidebar-summary {
+  width: 270px;
+}
+
+.activity-item--review {
+  border-color: var(--vw-state-warning);
+  background: var(--vw-state-warning-subtle);
+  color: var(--vw-state-warning);
+}
+
+.activity-item--processing {
+  border-color: var(--vw-accent-primary);
+  background: var(--vw-accent-subtle);
+  color: var(--vw-accent-primary);
+}
+
+.activity-item--stale {
+  border-color: var(--vw-state-stale);
+  background: var(--vw-state-stale-subtle);
+  color: var(--vw-state-stale);
+}
+
+.activity-item--review .activity-marker,
+.activity-item--processing .activity-marker,
+.activity-item--stale .activity-marker {
+  display: flex;
+}
+
+.activity-item--review .activity-marker {
+  background: var(--vw-state-warning);
+}
+
+.activity-item--processing .activity-marker {
+  background: var(--vw-accent-primary);
+}
+
+.activity-item--stale .activity-marker {
+  background: var(--vw-state-stale);
+}
+
+.activity-item--focus {
+  border: 2px solid var(--vw-focus-ring);
+  background: var(--vw-surface-raised);
+  color: var(--vw-text-primary);
+}
+
+.sidebar-item--focus {
+  border: 2px solid var(--vw-focus-ring);
+  background: var(--vw-surface-raised);
+  color: var(--vw-text-primary);
+}
+
+.toolbar-button--focus {
+  border: 2px solid var(--vw-focus-ring);
+}
+
+.focus-order-guide {
+  display: flex;
+  width: 820px;
+  max-width: 100%;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+  border: 2px solid var(--vw-focus-ring);
+  border-radius: var(--vw-radius-md);
+  background: var(--vw-surface-raised);
+}
+
+.focus-step {
+  display: flex;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  gap: 8px;
+  color: var(--vw-text-primary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.focus-step-number {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--vw-surface-selected);
+  color: var(--vw-accent-primary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+body.tooltip-page {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.tooltip-art {
+  display: flex;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #3a3d42;
+  border-radius: 4px;
+  background: #25272b;
+  box-sizing: border-box;
+  color: #f5f6f8;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.tooltip-art--wide {
+  width: 68px;
+}
+
+.tooltip-art--compact {
+  width: 44px;
+}
+
+.tooltip-render {
+  width: max-content;
+  height: 26px;
+  overflow: hidden;
+}

@@ -1,0 +1,14 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Logo / Waveform" clip-path="url(#clip0_0_10)">
+<path id="Vector" d="M1.37143 20.5714V11.4286" stroke="#2F6F68" stroke-width="3" stroke-linecap="round"/>
+<path id="Vector_2" d="M8.68571 26.0571V5.94286" stroke="#2F6F68" stroke-width="3" stroke-linecap="round"/>
+<path id="Vector_3" d="M16 30.6286V1.37143" stroke="#2F6F68" stroke-width="3" stroke-linecap="round"/>
+<path id="Vector_4" d="M23.3143 25.1429V6.85714" stroke="#2F6F68" stroke-width="3" stroke-linecap="round"/>
+<path id="Vector_5" d="M30.6286 19.6571V12.3429" stroke="#2F6F68" stroke-width="3" stroke-linecap="round"/>
+</g>
+<defs>
+<clipPath id="clip0_0_10">
+<rect width="32" height="32" fill="white"/>
+</clipPath>
+</defs>
+</svg>

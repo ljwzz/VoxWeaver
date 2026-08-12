@@ -1,0 +1,440 @@
+[
+  {
+    "slug": "startup-home",
+    "title": "00A 项目启动",
+    "group": "startup",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/startup/StartupHomePage.vue"
+  },
+  {
+    "slug": "startup-new-project",
+    "title": "00B 新建项目 · 待选择",
+    "group": "startup",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/startup/NewProjectPage.vue"
+  },
+  {
+    "slug": "overall-text",
+    "title": "00A 整体工作台 · 文本整理",
+    "group": "overall",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/workspace/WorkspaceTextPage.vue"
+  },
+  {
+    "slug": "overall-role",
+    "title": "00B 整体工作台 · 角色管理",
+    "group": "overall",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/workspace/WorkspaceRolePage.vue"
+  },
+  {
+    "slug": "overall-audio",
+    "title": "00C 整体工作台 · 音频生成",
+    "group": "overall",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/workspace/WorkspaceAudioPage.vue"
+  },
+  {
+    "slug": "overall-post",
+    "title": "00D 整体工作台 · 后期处理",
+    "group": "overall",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/workspace/WorkspacePostPage.vue"
+  },
+  {
+    "slug": "overall-settings",
+    "title": "00E 整体工作台 · 设置",
+    "group": "overall",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/workspace/WorkspaceSettingsPage.vue"
+  },
+  {
+    "slug": "workbench-sidebar-expanded",
+    "title": "00F 侧栏扩展 300",
+    "group": "workbench",
+    "kind": "state",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/workbench/SidebarExpandedPage.vue"
+  },
+  {
+    "slug": "overall-text-1280",
+    "title": "00G 整体工作台 · 文本整理 1280",
+    "group": "overall",
+    "kind": "responsive",
+    "width": 1280,
+    "height": 800,
+    "componentPath": "./pages/workspace/WorkspaceTextPage.vue"
+  },
+  {
+    "slug": "workbench-keyboard-focus",
+    "title": "00H 键盘焦点顺序",
+    "group": "workbench",
+    "kind": "state",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/workbench/KeyboardFocusPage.vue"
+  },
+  {
+    "slug": "text-extraction",
+    "title": "01A 文本提取",
+    "group": "text",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/text/TextExtractionPage.vue"
+  },
+  {
+    "slug": "chapter-splitting",
+    "title": "01B 章节切割",
+    "group": "text",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/text/ChapterSplittingPage.vue"
+  },
+  {
+    "slug": "proofreading",
+    "title": "01C 错别字与标点",
+    "group": "text",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/text/ProofreadingPage.vue"
+  },
+  {
+    "slug": "character-extraction",
+    "title": "01D 角色提取",
+    "group": "text",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/text/CharacterExtractionPage.vue"
+  },
+  {
+    "slug": "script-management",
+    "title": "01E 剧本管理",
+    "group": "text",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/text/ScriptManagementPage.vue"
+  },
+  {
+    "slug": "text-downstream-stale-dialog",
+    "title": "确认下游失效 · 段落拆分",
+    "group": "text",
+    "kind": "overlay",
+    "width": 608,
+    "height": 414,
+    "renderWidth": 608,
+    "renderHeight": 426,
+    "componentPath": "./pages/text/OverlayDownstreamStalePage.vue"
+  },
+  {
+    "slug": "tooltip-text",
+    "title": "Tooltip · 文本整理",
+    "group": "workbench",
+    "kind": "tooltip",
+    "width": 68,
+    "height": 26,
+    "componentPath": "./pages/workbench/TooltipTextPage.vue"
+  },
+  {
+    "slug": "tooltip-role",
+    "title": "Tooltip · 角色管理",
+    "group": "workbench",
+    "kind": "tooltip",
+    "width": 68,
+    "height": 26,
+    "componentPath": "./pages/workbench/TooltipRolePage.vue"
+  },
+  {
+    "slug": "tooltip-audio",
+    "title": "Tooltip · 音频生成",
+    "group": "workbench",
+    "kind": "tooltip",
+    "width": 68,
+    "height": 26,
+    "componentPath": "./pages/workbench/TooltipAudioPage.vue"
+  },
+  {
+    "slug": "tooltip-post",
+    "title": "Tooltip · 后期处理",
+    "group": "workbench",
+    "kind": "tooltip",
+    "width": 68,
+    "height": 26,
+    "componentPath": "./pages/workbench/TooltipPostPage.vue"
+  },
+  {
+    "slug": "tooltip-settings",
+    "title": "Tooltip · 设置",
+    "group": "workbench",
+    "kind": "tooltip",
+    "width": 44,
+    "height": 26,
+    "componentPath": "./pages/workbench/TooltipSettingsPage.vue"
+  },
+  {
+    "slug": "primary-character-marking",
+    "title": "02A 主要角色标记",
+    "group": "role",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/role/PrimaryCharacterMarkingPage.vue"
+  },
+  {
+    "slug": "crowd-voice-pool",
+    "title": "02B 路人声音池",
+    "group": "role",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/role/CrowdVoicePoolPage.vue"
+  },
+  {
+    "slug": "character-voice-refinement",
+    "title": "02C 角色声音精修",
+    "group": "role",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/role/CharacterVoiceRefinementPage.vue"
+  },
+  {
+    "slug": "audio-chapter-parameters",
+    "title": "03A 音频生成 · 章节参数",
+    "group": "audio",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/audio/ChapterParametersPage.vue"
+  },
+  {
+    "slug": "audio-selection-requirements",
+    "title": "03B 音频生成 · 选区特殊要求",
+    "group": "audio",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/audio/SelectionRequirementsPage.vue"
+  },
+  {
+    "slug": "audio-asr-review",
+    "title": "03C 音频生成 · ASR 低匹配复核",
+    "group": "audio",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/audio/AsrLowMatchReviewPage.vue"
+  },
+  {
+    "slug": "audio-chapter-generation",
+    "title": "03D 音频生成 · 整章生成状态",
+    "group": "audio",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/audio/ChapterGenerationStatusPage.vue"
+  },
+  {
+    "slug": "audio-stale-propagation",
+    "title": "03E 音频生成 · 失效传播",
+    "group": "audio",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/audio/SplitStalePropagationPage.vue"
+  },
+  {
+    "slug": "audio-stale-confirm-dialog",
+    "title": "音频失效确认 · 段落拆分",
+    "group": "audio",
+    "kind": "overlay",
+    "width": 608,
+    "height": 488,
+    "renderWidth": 656,
+    "renderHeight": 536,
+    "componentPath": "./pages/audio/OverlayAudioStaleConfirmPage.vue"
+  },
+  {
+    "slug": "audio-cancel-generation-dialog",
+    "title": "取消整章生成",
+    "group": "audio",
+    "kind": "overlay",
+    "width": 368,
+    "height": 180,
+    "renderWidth": 416,
+    "renderHeight": 228,
+    "componentPath": "./pages/audio/OverlayCancelGenerationPage.vue"
+  },
+  {
+    "slug": "audio-chapter-parameters-1280",
+    "title": "03R 音频生成 1280",
+    "group": "audio",
+    "kind": "responsive",
+    "width": 1280,
+    "height": 800,
+    "componentPath": "./pages/audio/ChapterParametersPage.vue"
+  },
+  {
+    "slug": "timeline-alignment",
+    "title": "04A 章节音频合并 · 时间轴对齐",
+    "group": "post",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/post/TimelineAlignmentPage.vue"
+  },
+  {
+    "slug": "loudness-consistency",
+    "title": "04B 章节音频合并 · 响度一致性",
+    "group": "post",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/post/LoudnessConsistencyPage.vue"
+  },
+  {
+    "slug": "chapter-summary",
+    "title": "04C 章节摘要生成",
+    "group": "post",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/post/ChapterSummaryPage.vue"
+  },
+  {
+    "slug": "chapter-cover",
+    "title": "04D 章节封面生成",
+    "group": "post",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/post/ChapterCoverPage.vue"
+  },
+  {
+    "slug": "tar-export",
+    "title": "04E 导出 tar",
+    "group": "post",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/post/TarExportPage.vue"
+  },
+  {
+    "slug": "offline-player-export",
+    "title": "04F 导出离线播放页",
+    "group": "post",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/post/OfflinePlayerExportPage.vue"
+  },
+  {
+    "slug": "project-backup",
+    "title": "05A 设置 · 项目备份",
+    "group": "settings",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/settings/ProjectBackupPage.vue"
+  },
+  {
+    "slug": "project-settings",
+    "title": "05B 设置 · 项目设置",
+    "group": "settings",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/settings/ProjectSettingsPage.vue"
+  },
+  {
+    "slug": "software-settings",
+    "title": "05C 设置 · 软件设置",
+    "group": "settings",
+    "kind": "page",
+    "width": 1440,
+    "height": 900,
+    "componentPath": "./pages/settings/SoftwareSettingsPage.vue"
+  },
+  {
+    "slug": "restore-backup-dialog",
+    "title": "恢复项目备份确认",
+    "group": "settings",
+    "kind": "overlay",
+    "width": 560,
+    "height": 370,
+    "componentPath": "./pages/settings/OverlayRestoreBackupPage.vue"
+  },
+  {
+    "slug": "unsaved-to-backup-dialog",
+    "title": "未保存修改 · 前往项目备份",
+    "group": "settings",
+    "kind": "overlay",
+    "width": 520,
+    "height": 304,
+    "componentPath": "./pages/settings/OverlayUnsavedToBackupPage.vue"
+  },
+  {
+    "slug": "unsaved-to-software-dialog",
+    "title": "未保存修改 · 前往软件设置",
+    "group": "settings",
+    "kind": "overlay",
+    "width": 520,
+    "height": 304,
+    "componentPath": "./pages/settings/OverlayUnsavedToSoftwarePage.vue"
+  },
+  {
+    "slug": "settings-validation-dialog",
+    "title": "项目设置字段校验失败",
+    "group": "settings",
+    "kind": "overlay",
+    "width": 520,
+    "height": 300,
+    "componentPath": "./pages/settings/OverlayValidationErrorPage.vue"
+  },
+  {
+    "slug": "settings-save-success-dialog",
+    "title": "软件设置保存成功",
+    "group": "settings",
+    "kind": "overlay",
+    "width": 420,
+    "height": 196,
+    "componentPath": "./pages/settings/OverlaySaveSuccessPage.vue"
+  },
+  {
+    "slug": "project-settings-1280",
+    "title": "05R 项目设置 1280",
+    "group": "settings",
+    "kind": "responsive",
+    "width": 1280,
+    "height": 800,
+    "componentPath": "./pages/settings/ProjectSettingsPage.vue"
+  },
+  {
+    "slug": "settings-focus-overflow-qa",
+    "title": "05R QA · 键盘焦点与横向溢出",
+    "group": "settings",
+    "kind": "qa",
+    "width": 1280,
+    "height": 120,
+    "componentPath": "./pages/settings/QaFocusOverflowPage.vue"
+  }
+]

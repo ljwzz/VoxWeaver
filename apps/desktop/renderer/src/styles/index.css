@@ -1,0 +1,148 @@
+:root {
+  color: #202522;
+  background: #fbfcfa;
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-synthesis: none;
+  text-rendering: geometricprecision;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 840px;
+  min-height: 560px;
+  overflow: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.not-found-page {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.page-catalog-link {
+  display: inline-flex;
+  padding: 8px 14px;
+  border-radius: 6px;
+  color: #fff;
+  background: #2f6f68;
+}
+
+.page-catalog {
+  width: 100%;
+  height: 100%;
+  padding: 32px;
+  overflow: auto;
+  background: #f5f6f3;
+}
+
+.page-catalog-header {
+  display: flex;
+  max-width: 1180px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin: 0 auto 28px;
+  padding: 24px;
+  border: 1px solid #d9ddd7;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.page-catalog-header h1 {
+  margin: 4px 0 8px;
+  font-size: 26px;
+  line-height: 36px;
+}
+
+.page-catalog-header p {
+  margin: 0;
+  color: #6a726e;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.page-catalog-eyebrow {
+  color: #2f6f68 !important;
+  font-size: 12px !important;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.page-catalog-section {
+  max-width: 1180px;
+  margin: 0 auto 28px;
+}
+
+.page-catalog-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.page-catalog-section-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.page-catalog-section-header span {
+  color: #6a726e;
+  font-size: 12px;
+}
+
+.page-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.page-card {
+  display: flex;
+  min-height: 92px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 14px;
+  border: 1px solid #d9ddd7;
+  border-radius: 8px;
+  background: #fff;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.page-card:hover,
+.page-card:focus-visible {
+  border-color: #2f6f68;
+  outline: none;
+  box-shadow: 0 2px 10px rgb(47 111 104 / 12%);
+}
+
+.page-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.page-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6a726e;
+  font-size: 11px;
+}

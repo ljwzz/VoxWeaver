@@ -58,6 +58,27 @@ VoxWeaver 计划覆盖以下制作环节：
 * **面向长篇内容**
   项目设计需要支持跨章节角色一致性、声音一致性和长期制作。
 
+## 本地开发
+
+当前工程使用 Electron Forge、Vite、Vue、Vue Router 与 Element Plus。项目启动、工作台、文本、角色、音频、后期和设置共 45 个页面组件已经接入真实前端路由；48 个展示状态继续使用固定本地数据，不接入业务 API、SQLite、Provider 或任务调度。
+
+环境版本见 [`.nvmrc`](./.nvmrc) 与 [`package.json`](./package.json)。在仓库根目录执行：
+
+```bash
+corepack pnpm install
+corepack pnpm run dev
+```
+
+`dev` 由 Electron Forge 启动主进程、预加载脚本与 Vite Renderer。应用默认进入项目启动页，页面目录位于 `#/pages`。完整校验与 macOS 本地打包：
+
+```bash
+corepack pnpm run check
+corepack pnpm run package
+```
+
+本地包输出到 `apps/desktop/out/VoxWeaver-darwin-arm64/VoxWeaver.app`。打包流程仅执行本机 ad-hoc 签名和完整性校验，不包含 Developer ID 签名、公证或发布。
+
+`check` 会校验代码规范、类型、48 条路由映射、45 个 Vue 页面、本地资源与静态展示边界。
 
 ## 项目文档
 

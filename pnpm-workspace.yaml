@@ -1,0 +1,18 @@
+nodeLinker: hoisted
+shellEmulator: true
+trustPolicy: no-downgrade
+saveExact: true
+
+# Electron Forge 7.11.2 的 Inquirer 依赖链固定使用 @types/node 22.20.1。
+trustPolicyExclude:
+  - undici-types@6.21.0
+
+packages:
+  - apps/*
+
+# Electron Forge 7.11.2 通过 @electron/rebuild 引用官方 @electron/node-gyp Git 依赖。
+blockExoticSubdeps: false
+
+allowBuilds:
+  electron: true
+  esbuild: true

@@ -10,20 +10,13 @@
 !.env.example
 secrets/
 
-# Python
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.venv/
-venv/
-
 # Node.js
 node_modules/
 .pnpm-store/
 dist/
 coverage/
+apps/desktop/.vite/
+apps/desktop/renderer/.vite/
 apps/desktop/.webpack/
 apps/desktop/out/
 apps/desktop/test/.generated/

@@ -1,0 +1,40 @@
+{
+  "extends": [
+    "stylelint-config-standard-scss",
+    "stylelint-config-recommended-vue"
+  ],
+  "plugins": ["stylelint-scss"],
+  "rules": {
+    "at-rule-no-unknown": null,
+    "custom-property-pattern": null,
+    "declaration-property-value-no-unknown": null,
+    "no-descending-specificity": null,
+    "scss/at-rule-no-unknown": null,
+    "scss/dollar-variable-pattern": null,
+    "selector-class-pattern": null,
+    "selector-pseudo-class-no-unknown": [
+      true,
+      {
+        "ignorePseudoClasses": ["deep", "global", "local"]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.vue"],
+      "customSyntax": "postcss-html"
+    },
+    {
+      "files": ["apps/desktop/renderer/src/pages/**/*.css"],
+      "rules": {
+        "declaration-block-no-redundant-longhand-properties": null,
+        "declaration-block-single-line-max-declarations": null,
+        "declaration-empty-line-before": null,
+        "media-feature-range-notation": null,
+        "number-max-precision": null,
+        "rule-empty-line-before": null,
+        "value-keyword-case": null
+      }
+    }
+  ]
+}

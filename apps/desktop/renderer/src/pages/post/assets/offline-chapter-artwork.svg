@@ -1,0 +1,7 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="112" height="112" viewBox="0 0 112 112" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Chapter artwork">
+<path d="M0 8C0 3.58172 3.58172 0 8 0H104C108.418 0 112 3.58172 112 8V104C112 108.418 108.418 112 104 112H8C3.58172 112 0 108.418 0 104V8Z" fill="#E2EFED"/>
+<circle id="Abstract orb" cx="64" cy="44" r="26" fill="#F8EED6"/>
+<path id="Abstract ridge" d="M12 80C12 76.6863 14.6863 74 18 74H94C97.3137 74 100 76.6863 100 80V96C100 99.3137 97.3137 102 94 102H18C14.6863 102 12 99.3137 12 96V80Z" fill="#E2EFED"/>
+</g>
+</svg>
