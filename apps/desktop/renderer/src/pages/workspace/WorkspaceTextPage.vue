@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ProjectSummary } from '@voxweaver/contracts';
 
-import { AudioLines, FileText, Info, Settings, SlidersHorizontal, UsersRound, X } from '@lucide/vue';
+import { AudioLines, FileText, Info, Settings, SlidersHorizontal, UsersRound } from '@lucide/vue';
 import { onMounted, shallowRef } from 'vue';
 import PageDocument from '@/components/PageDocument.vue';
 import pageStyles from './styles.css?inline';
@@ -10,7 +10,6 @@ const bodyClasses = ['workspace-view', 'workspace-view--project'] as const;
 const styleSheets = [pageStyles] as const;
 const project = shallowRef<ProjectSummary>();
 const errorMessage = shallowRef('');
-const isClosing = shallowRef(false);
 
 async function loadProjectContext(): Promise<void> {
   const result = await window.voxweaver.getWindowContext();
@@ -28,17 +27,6 @@ async function loadProjectContext(): Promise<void> {
   document.title = `VoxWeaver · ${result.value.project.displayName}`;
 }
 
-async function closeProject(): Promise<void> {
-  if (isClosing.value)
-    return;
-  isClosing.value = true;
-  const result = await window.voxweaver.closeCurrentProject();
-  if (!result.ok) {
-    isClosing.value = false;
-    errorMessage.value = result.error.message;
-  }
-}
-
 onMounted(() => {
   void loadProjectContext();
 });
@@ -48,12 +36,11 @@ onMounted(() => {
   <PageDocument :body-classes="bodyClasses" :style-sheets="styleSheets">
     <main class="project-workspace" aria-label="VoxWeaver 项目工作台">
       <header class="project-titlebar">
-        <p>{{ project ? `VoxWeaver · ${project.displayName}` : 'VoxWeaver · 项目工作台' }}</p>
-        <span>项目工作台</span>
-        <button type="button" :disabled="isClosing" title="关闭当前项目窗口" @click="closeProject">
-          <X :size="15" aria-hidden="true" />
-          {{ isClosing ? '正在关闭' : '关闭项目' }}
-        </button>
+        <span>{{
+          project
+            ? `VoxWeaver · ${project.displayName}`
+            : "VoxWeaver · 项目工作台"
+        }}</span>
       </header>
 
       <div class="project-workspace-body">
