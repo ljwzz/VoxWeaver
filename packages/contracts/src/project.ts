@@ -154,18 +154,6 @@ export type ProjectOpenOutcomeDto
     readonly riskSummary: readonly string[];
   };
 
-export interface DesktopApi {
-  selectProjectDirectory: () => Promise<AppResult<SelectionResult | null>>;
-  selectSourceFile: () => Promise<AppResult<SelectionResult | null>>;
-  createProject: (request: CreateProjectRequest) => Promise<AppResult<ProjectSummary>>;
-  openProjectFromDialog: () => Promise<AppResult<ProjectSummary | null>>;
-  listRecentProjects: () => Promise<AppResult<RecentProjectSummary[]>>;
-  openRecentProject: (projectId: string) => Promise<AppResult<ProjectSummary>>;
-  removeRecentProject: (projectId: string) => Promise<AppResult<void>>;
-  getWindowContext: () => Promise<AppResult<WindowContext>>;
-  closeCurrentProject: () => Promise<AppResult<void>>;
-}
-
 export class VoxWeaverError extends Error {
   readonly code: AppErrorCode;
   readonly retryable: boolean;

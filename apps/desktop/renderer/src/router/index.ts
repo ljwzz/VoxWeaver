@@ -1,70 +1,93 @@
-import type { RouteRecordRaw } from 'vue-router';
+import type { RouteRecordRaw, RouterHistory } from 'vue-router';
 
 import { createRouter, createWebHashHistory } from 'vue-router';
-import NotFoundPage from '@/components/NotFoundPage.vue';
-import PageCatalog from '@/components/PageCatalog.vue';
-import { appPages } from '@/pages';
+import ProjectWorkspaceLayout from '@/layouts/ProjectWorkspaceLayout.vue';
+import ProductionNotFoundPage from '@/pages/project/ProductionNotFoundPage.vue';
+import ProjectEntryResolverPage from '@/pages/project/ProjectEntryResolverPage.vue';
 import NewProjectPage from '@/pages/startup/NewProjectPage.vue';
 import StartupHomePage from '@/pages/startup/StartupHomePage.vue';
-import WorkspaceTextPage from '@/pages/workspace/WorkspaceTextPage.vue';
+import {
+  getProjectPageRouteName,
+  workspacePages,
+} from '@/workspace/navigation';
 
-const pageRoutes: RouteRecordRaw[] = appPages.map(page => ({
+const projectPageRoutes: RouteRecordRaw[] = workspacePages.map(page => ({
   component: page.component,
   meta: {
-    pageKind: page.kind,
-    pageTitle: page.title,
+    isDemoPreview: false,
+    workspaceModuleKey: page.moduleKey,
+    workspacePageKey: page.key,
+    ...(page.stageId ? { workspaceStageId: page.stageId } : {}),
   },
-  name: `page-${page.slug}`,
-  path: page.path,
+  name: getProjectPageRouteName(page.key),
+  path: page.key,
 }));
 
-export const router = createRouter({
-  history: createWebHashHistory(),
-  routes: [
-    {
-      path: '/',
-      redirect: '/startup',
-    },
-    {
-      component: StartupHomePage,
-      meta: { pageTitle: 'VoxWeaver' },
-      name: 'startup',
-      path: '/startup',
-    },
-    {
-      component: NewProjectPage,
-      meta: { pageTitle: 'VoxWeaver · 新建项目' },
-      name: 'new-project',
-      path: '/new-project',
-    },
-    {
-      component: WorkspaceTextPage,
-      meta: { pageTitle: 'VoxWeaver · 项目工作台' },
-      name: 'project',
-      path: '/project',
-    },
-    {
-      component: PageCatalog,
-      meta: {
-        pageTitle: 'VoxWeaver · 页面目录',
+export function createAppRouter(history: RouterHistory = createWebHashHistory()) {
+  const appRouter = createRouter({
+    history,
+    routes: [
+      {
+        path: '/',
+        redirect: '/startup',
       },
-      name: 'pages',
-      path: '/pages',
-    },
-    ...pageRoutes,
-    {
-      component: NotFoundPage,
-      meta: {
-        pageTitle: 'VoxWeaver · 页面不存在',
+      {
+        component: StartupHomePage,
+        meta: {
+          isDemoPreview: false,
+          pageTitle: 'VoxWeaver',
+        },
+        name: 'startup',
+        path: '/startup',
       },
-      name: 'not-found',
-      path: '/:pathMatch(.*)*',
-    },
-  ],
-});
+      {
+        component: NewProjectPage,
+        meta: {
+          isDemoPreview: false,
+          pageTitle: 'VoxWeaver · 新建项目',
+        },
+        name: 'new-project',
+        path: '/new-project',
+      },
+      {
+        children: [
+          {
+            component: ProjectEntryResolverPage,
+            meta: {
+              isDemoPreview: false,
+            },
+            name: 'project',
+            path: '',
+          },
+          ...projectPageRoutes,
+        ],
+        component: ProjectWorkspaceLayout,
+        meta: {
+          isDemoPreview: false,
+          usesProjectTitle: true,
+        },
+        path: '/project',
+      },
+      {
+        component: ProductionNotFoundPage,
+        meta: {
+          isDemoPreview: false,
+          pageTitle: 'VoxWeaver · 页面不存在',
+        },
+        name: 'not-found',
+        path: '/:pathMatch(.*)*',
+      },
+    ],
+  });
 
-router.afterEach((route) => {
-  document.title = typeof route.meta.pageTitle === 'string'
-    ? route.meta.pageTitle
-    : 'VoxWeaver';
-});
+  appRouter.afterEach((route, _from, failure) => {
+    if (failure || route.meta.usesProjectTitle)
+      return;
+
+    document.title = route.meta.pageTitle ?? 'VoxWeaver';
+  });
+
+  return appRouter;
+}
+
+export const router = createAppRouter();

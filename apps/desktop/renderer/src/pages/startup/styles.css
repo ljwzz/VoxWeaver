@@ -523,3 +523,20 @@ body.startup-screen {
   background: #eceeeb;
   cursor: not-allowed;
 }
+
+.project-open-confirmation-title {
+  margin: 0;
+  color: #29332e;
+  font-size: 17px;
+}
+
+.project-open-confirmation-description,
+.project-open-confirmation-risks {
+  color: #59645e;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.project-open-confirmation-risks {
+  padding-left: 20px;
+}

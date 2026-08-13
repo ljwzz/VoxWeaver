@@ -11,7 +11,7 @@ Documentation starts at `README.md`, then routes through `docs/README.md` to `do
 Use Node `v24.13.0` (`.nvmrc`) and the pnpm version declared in `package.json`.
 
 - `corepack pnpm install` installs the locked workspace dependencies.
-- `corepack pnpm run dev` starts Electron Forge with the Vite renderer; use `dev:debug` to open DevTools.
+- `corepack pnpm run dev` starts Electron Forge with the Vite renderer;
 - `corepack pnpm run check` runs ESLint, Stylelint, TypeScript checks, all tests, and page-manifest validation.
 - `corepack pnpm run package` builds the local macOS arm64 application; `make` creates the distributable archive.
 - `corepack pnpm --filter @voxweaver/desktop test` runs only desktop tests during iteration.

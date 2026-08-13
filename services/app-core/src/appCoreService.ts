@@ -1,19 +1,34 @@
+import type { CoreEventEnvelope } from '@voxweaver/contracts';
 import path from 'node:path';
-import { ProjectApplicationService } from '@voxweaver/application';
-import { NodeProjectWorkspace } from '@voxweaver/project-workspace';
+import { NovelImportService } from './novelImportService.ts';
+import { ProjectSessionRegistry } from './projectSessionRegistry.ts';
 import { SqliteProjectCatalog } from './sqliteProjectCatalog.ts';
 
 export class AppCoreService {
-  readonly projects: ProjectApplicationService;
+  readonly sessions: ProjectSessionRegistry;
+  readonly novelImport: NovelImportService;
   readonly #catalog: SqliteProjectCatalog;
+  #closed = false;
 
-  constructor(userDataPath: string) {
-    const workspace = new NodeProjectWorkspace();
+  constructor(
+    userDataPath: string,
+    appInstanceId: string,
+    emitEvent?: (event: CoreEventEnvelope) => void,
+  ) {
     this.#catalog = new SqliteProjectCatalog(path.join(userDataPath, 'app-data', 'catalog.sqlite'));
-    this.projects = new ProjectApplicationService(workspace, this.#catalog);
+    this.sessions = new ProjectSessionRegistry({
+      appInstanceId,
+      catalog: this.#catalog,
+    });
+    this.novelImport = new NovelImportService(this.sessions, { ...(emitEvent ? { emitEvent } : {}) });
   }
 
-  close(): void {
+  async close(): Promise<void> {
+    if (this.#closed)
+      return;
+    this.#closed = true;
+    await this.novelImport.waitForIdle();
+    await this.sessions.closeAll();
     this.#catalog.close();
   }
 }

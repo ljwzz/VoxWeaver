@@ -10,7 +10,6 @@
   },
   "scripts": {
     "dev": "corepack pnpm --filter @voxweaver/desktop start",
-    "dev:debug": "VOXWEAVER_OPEN_DEVTOOLS=1 corepack pnpm --filter @voxweaver/desktop start",
     "start": "corepack pnpm run dev",
     "package": "corepack pnpm --filter @voxweaver/desktop package",
     "make": "corepack pnpm --filter @voxweaver/desktop make",

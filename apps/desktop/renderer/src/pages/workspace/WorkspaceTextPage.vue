@@ -2,24 +2,28 @@
 import type { ProjectSummary } from '@voxweaver/contracts';
 
 import { AudioLines, FileText, Info, Settings, SlidersHorizontal, UsersRound } from '@lucide/vue';
-import { onMounted, shallowRef } from 'vue';
+import { computed, inject, shallowRef, watch } from 'vue';
+import { routeLocationKey } from 'vue-router';
+import DemoPageButton from '@/components/demo/DemoPageButton.vue';
 import PageDocument from '@/components/PageDocument.vue';
+import TextDemoShell from '@/pages/text/TextDemoShell.vue';
+import textPageStyles from '../text/styles.css?inline';
 import pageStyles from './styles.css?inline';
 
-const bodyClasses = ['workspace-view', 'workspace-view--project'] as const;
-const styleSheets = [pageStyles] as const;
+const projectBodyClasses = ['workspace-view', 'workspace-view--project'] as const;
+const projectStyleSheets = [pageStyles] as const;
+const previewBodyClasses = ['workspace-view', 'workspace-view--text', 'text-page'] as const;
+const previewStyleSheets = [pageStyles, textPageStyles] as const;
+const route = inject(routeLocationKey, undefined);
+const isDemoPreview = computed(() => route?.meta.isDemoPreview === true);
 const project = shallowRef<ProjectSummary>();
 const errorMessage = shallowRef('');
 
 async function loadProjectContext(): Promise<void> {
-  const result = await window.voxweaver.getWindowContext();
+  errorMessage.value = '';
+  const result = await window.voxweaver.project.getBootstrap();
   if (!result.ok) {
     errorMessage.value = result.error.message;
-    return;
-  }
-
-  if (result.value.kind !== 'project') {
-    errorMessage.value = '当前窗口没有已打开的项目。';
     return;
   }
 
@@ -27,13 +31,73 @@ async function loadProjectContext(): Promise<void> {
   document.title = `VoxWeaver · ${result.value.project.displayName}`;
 }
 
-onMounted(() => {
+watch(isDemoPreview, (demoPreview) => {
+  if (demoPreview) {
+    project.value = undefined;
+    errorMessage.value = '';
+    return;
+  }
+
   void loadProjectContext();
-});
+}, { immediate: true });
 </script>
 
 <template>
-  <PageDocument :body-classes="bodyClasses" :style-sheets="styleSheets">
+  <PageDocument
+    v-if="isDemoPreview"
+    key="text-demo-preview"
+    :body-classes="previewBodyClasses"
+    :style-sheets="previewStyleSheets"
+  >
+    <TextDemoShell
+      current-page="text-extraction"
+      editor-aria-label="文本提取编辑区"
+      label="VoxWeaver 项目工作台预览"
+      sidebar-subtitle-compact="1280×800 · 5 个子功能"
+      toolbar-detail="示例小说.epub · EPUB / UTF-8"
+      toolbar-detail-compact="1280×800 紧凑视口"
+      toolbar-title="文本提取"
+    >
+      <template #toolbar-actions>
+        <span class="icon-button" aria-disabled="true">⋯</span>
+        <DemoPageButton class="toolbar-button toolbar-button--secondary" page-slug="proofreading">
+          查看问题
+        </DemoPageButton>
+        <DemoPageButton class="toolbar-button toolbar-button--primary" page-slug="text-extraction">
+          提取文本
+        </DemoPageButton>
+      </template>
+
+      <div class="editor-content">
+        <p class="eyebrow">项目工作台</p>
+        <h2>继续整理《示例小说》</h2>
+        <p class="editor-description">当前停留在第 3 章。工作台壳层用于承载导航、状态和上下文，不替代具体业务页面。</p>
+
+        <section class="state-summary" aria-label="项目状态摘要">
+          <article class="summary-card"><p>当前章节</p><strong>第 3 章 · 雨夜</strong></article>
+          <article class="summary-card"><p>总进度</p><strong>62% · 22 / 36 章</strong></article>
+          <article class="summary-card"><p>待复核</p><strong>12 项</strong></article>
+          <article class="summary-card"><p>已失效</p><strong>3 项</strong></article>
+        </section>
+
+        <DemoPageButton
+          class="continue-card"
+          page-slug="chapter-splitting"
+          aria-label="继续章节切割演示"
+        >
+          <h3>继续上次工作</h3>
+          <p>章节切割 · 第 3 章边界待确认</p>
+        </DemoPageButton>
+      </div>
+    </TextDemoShell>
+  </PageDocument>
+
+  <PageDocument
+    v-else
+    key="project-context"
+    :body-classes="projectBodyClasses"
+    :style-sheets="projectStyleSheets"
+  >
     <main class="project-workspace" aria-label="VoxWeaver 项目工作台">
       <header class="project-titlebar">
         <span>{{

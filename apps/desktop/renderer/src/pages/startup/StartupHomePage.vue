@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { RecentProjectSummary } from '@voxweaver/contracts';
+import type { ProjectOpenOutcomeDto, RecentProjectSummary } from '@voxweaver/contracts';
 
 import { FolderOpen, FolderPlus, Info, Settings, X } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, watch } from 'vue';
@@ -20,6 +20,8 @@ const recentProjectList = shallowRef<HTMLElement>();
 const fadedProjectId = shallowRef<string>();
 const activeProjectId = shallowRef<string>();
 const isOpeningDialog = shallowRef(false);
+const isConfirmingProject = shallowRef(false);
+const pendingConfirmation = shallowRef<Extract<ProjectOpenOutcomeDto, { kind: 'confirmation-required' }>>();
 const statusMessage = shallowRef('');
 const statusKind = shallowRef<'error' | 'info'>('info');
 const isRecentProjectsEmpty = computed(() => recentProjectsState.value === 'ready' && recentProjects.value.length === 0);
@@ -40,7 +42,7 @@ function setWarnings(warnings?: readonly string[]): void {
 
 async function loadRecentProjects(): Promise<void> {
   recentProjectsState.value = 'loading';
-  const result = await window.voxweaver.listRecentProjects();
+  const result = await window.voxweaver.startup.listRecentProjects();
   if (!result.ok) {
     recentProjectsState.value = 'failed';
     setFailure(result.error.message);
@@ -92,15 +94,14 @@ async function openProjectFromDialog(): Promise<void> {
   isOpeningDialog.value = true;
   statusMessage.value = '';
   try {
-    const result = await window.voxweaver.openProjectFromDialog();
+    const result = await window.voxweaver.startup.openProjectFromDialog();
     if (!result.ok) {
       setFailure(result.error.message);
       return;
     }
 
     setWarnings(result.warnings);
-    if (result.value)
-      await loadRecentProjects();
+    await handleOpenOutcome(result.value);
   } finally {
     isOpeningDialog.value = false;
   }
@@ -113,7 +114,7 @@ async function openRecentProject(project: RecentProjectSummary): Promise<void> {
   activeProjectId.value = project.projectId;
   statusMessage.value = '';
   try {
-    const result = await window.voxweaver.openRecentProject(project.projectId);
+    const result = await window.voxweaver.startup.openRecentProject(project.projectId);
     if (!result.ok) {
       setFailure(result.error.message);
       await loadRecentProjects();
@@ -121,20 +122,64 @@ async function openRecentProject(project: RecentProjectSummary): Promise<void> {
     }
 
     setWarnings(result.warnings);
-    await loadRecentProjects();
+    await handleOpenOutcome(result.value);
   } finally {
     activeProjectId.value = undefined;
   }
 }
 
 async function removeRecentProject(projectId: string): Promise<void> {
-  const result = await window.voxweaver.removeRecentProject(projectId);
+  const result = await window.voxweaver.startup.removeRecentProject(projectId);
   if (!result.ok) {
     setFailure(result.error.message);
     return;
   }
 
   recentProjects.value = recentProjects.value.filter(project => project.projectId !== projectId);
+}
+
+async function handleOpenOutcome(outcome: ProjectOpenOutcomeDto): Promise<void> {
+  if (outcome.kind === 'confirmation-required') {
+    pendingConfirmation.value = outcome;
+    return;
+  }
+
+  pendingConfirmation.value = undefined;
+  if (outcome.kind === 'opened' || outcome.kind === 'focused')
+    await loadRecentProjects();
+}
+
+async function confirmProjectOpen(): Promise<void> {
+  const confirmation = pendingConfirmation.value;
+  if (!confirmation || isConfirmingProject.value)
+    return;
+
+  isConfirmingProject.value = true;
+  statusMessage.value = '';
+  try {
+    const result = await window.voxweaver.startup.confirmProjectOpen(confirmation.confirmationToken);
+    if (!result.ok) {
+      pendingConfirmation.value = undefined;
+      setFailure(result.error.message);
+      await loadRecentProjects();
+      return;
+    }
+
+    setWarnings(result.warnings);
+    await handleOpenOutcome(result.value);
+  } finally {
+    isConfirmingProject.value = false;
+  }
+}
+
+function cancelProjectOpenConfirmation(): void {
+  if (!isConfirmingProject.value)
+    pendingConfirmation.value = undefined;
+}
+
+function handleProjectOpenConfirmationVisibility(visible: boolean): void {
+  if (!visible)
+    cancelProjectOpenConfirmation();
 }
 
 function availabilityLabel(availability: RecentProjectSummary['availability']): string {
@@ -260,6 +305,36 @@ onBeforeUnmount(() => {
           <span>{{ statusMessage }}</span>
         </p>
       </div>
+
+      <ElDialog
+        :close-on-click-modal="false"
+        :close-on-press-escape="!isConfirmingProject"
+        :model-value="Boolean(pendingConfirmation)"
+        :show-close="!isConfirmingProject"
+        title="打开项目前需要确认"
+        width="440px"
+        @update:model-value="handleProjectOpenConfirmationVisibility"
+      >
+        <template v-if="pendingConfirmation">
+          <h2 class="project-open-confirmation-title">{{ pendingConfirmation.project.displayName }}</h2>
+          <p class="project-open-confirmation-description">
+            下列操作会修改项目状态。确认令牌仅对本次检查结果有效；项目状态变化后需要重新检查。
+          </p>
+          <ul class="project-open-confirmation-risks">
+            <li v-for="risk in pendingConfirmation.riskSummary" :key="risk">{{ risk }}</li>
+          </ul>
+        </template>
+        <template #footer>
+          <ElButton :disabled="isConfirmingProject" @click="cancelProjectOpenConfirmation">取消</ElButton>
+          <ElButton
+            :loading="isConfirmingProject"
+            type="primary"
+            @click="confirmProjectOpen"
+          >
+            确认并打开
+          </ElButton>
+        </template>
+      </ElDialog>
     </main>
   </PageDocument>
 </template>

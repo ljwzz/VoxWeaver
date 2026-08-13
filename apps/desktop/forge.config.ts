@@ -57,6 +57,10 @@ const config: ForgeConfig = {
           config: 'vite.main.config.mts',
         },
         {
+          entry: { core: 'core/index.ts' },
+          config: 'vite.main.config.mts',
+        },
+        {
           entry: { preload: 'preload/index.ts' },
           config: 'vite.preload.config.mts',
           target: 'preload',

@@ -48,7 +48,7 @@ function updateReadyState(): void {
 }
 
 async function selectDirectory(): Promise<void> {
-  const result = await window.voxweaver.selectProjectDirectory();
+  const result = await window.voxweaver.startup.selectProjectDirectory();
   if (!result.ok) {
     formState.value = 'failed';
     errorMessage.value = result.error.message;
@@ -60,7 +60,7 @@ async function selectDirectory(): Promise<void> {
 }
 
 async function selectSourceFile(): Promise<void> {
-  const result = await window.voxweaver.selectSourceFile();
+  const result = await window.voxweaver.startup.selectSourceFile();
   if (!result.ok) {
     formState.value = 'failed';
     errorMessage.value = result.error.message;
@@ -78,7 +78,7 @@ async function createProject(): Promise<void> {
   formState.value = 'running';
   errorMessage.value = '';
   warningMessage.value = '';
-  const result = await window.voxweaver.createProject({
+  const result = await window.voxweaver.startup.createProject({
     displayName: normalizedName.value,
     directorySelectionId: directorySelection.value.selectionId,
     sourceSelectionId: sourceSelection.value.selectionId,

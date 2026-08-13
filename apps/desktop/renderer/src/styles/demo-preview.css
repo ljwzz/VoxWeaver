@@ -1,0 +1,36 @@
+.demo-preview-route {
+  --el-color-primary: #2f6f68;
+  --el-color-primary-rgb: 47, 111, 104;
+  --el-color-primary-light-9: #e2efed;
+  --el-border-color: #d9ddd7;
+  --el-text-color-primary: #202522;
+  --el-text-color-regular: #202522;
+  --el-text-color-secondary: #6a726e;
+  --el-border-radius-base: 6px;
+  --el-font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --demo-preview-selected: #e2efed;
+
+  color: #202522;
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.demo-preview-route :where(.demo-module-button, .demo-page-button) {
+  padding: 0;
+  border: 0;
+  margin: 0;
+  appearance: none;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.demo-preview-route :where(.demo-module-button, .demo-page-button)[aria-current] {
+  color: #2f6f68;
+  background: var(--demo-preview-selected);
+}
+
+.demo-preview-route :where(.demo-module-button, .demo-page-button):focus-visible {
+  outline: 2px solid #2f6f68;
+  outline-offset: 2px;
+}

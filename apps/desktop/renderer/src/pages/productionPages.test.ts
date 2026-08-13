@@ -1,7 +1,14 @@
-import type { DesktopApi, ProjectSummary, RecentProjectSummary, WindowContext } from '@voxweaver/contracts';
+import type {
+  DesktopApi,
+  ProjectOpenOutcomeDto,
+  ProjectSummary,
+  RecentProjectSummary,
+  WorkspaceBootstrapDto,
+} from '@voxweaver/contracts';
 
-import { failure, success } from '@voxweaver/contracts';
+import { failure, success, WORKSPACE_PAGE_KEYS } from '@voxweaver/contracts';
 import { flushPromises, mount } from '@vue/test-utils';
+import ElementPlus from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import NewProjectPage from './startup/NewProjectPage.vue';
@@ -71,18 +78,70 @@ function elementRect(top: number, height: number): DOMRect {
   };
 }
 
-function createApi(overrides: Partial<DesktopApi> = {}): DesktopApi {
+const workspaceBootstrap: WorkspaceBootstrapDto = {
+  project,
+  sourceAsset: {
+    id: '65f39bbd-dc44-45d5-8cf4-f58bd7af4373',
+    originalName: project.sourceFileName,
+    relativePath: 'inputs/source-assets/65f39bbd-dc44-45d5-8cf4-f58bd7af4373/download-18472.txt',
+    byteLength: 128,
+    sha256: 'a'.repeat(64),
+  },
+  stages: [],
+  capabilities: Object.fromEntries(WORKSPACE_PAGE_KEYS.map(pageKey => [pageKey, {
+    available: false,
+    reason: 'not-implemented',
+    message: '后续实现。',
+  }])) as WorkspaceBootstrapDto['capabilities'],
+  recoverableTasks: [],
+  recommendedPage: 'text-extraction',
+  coreHealth: {
+    status: 'healthy',
+    canRestart: false,
+    protocolVersion: 1,
+  },
+};
+
+interface ApiOverrides {
+  readonly startup?: Partial<DesktopApi['startup']>;
+  readonly project?: Partial<DesktopApi['project']>;
+}
+
+function createApi(overrides: ApiOverrides = {}): DesktopApi {
   return {
-    selectProjectDirectory: vi.fn(async () => success(null)),
-    selectSourceFile: vi.fn(async () => success(null)),
-    createProject: vi.fn(async () => success(project)),
-    openProjectFromDialog: vi.fn(async () => success(null)),
-    listRecentProjects: vi.fn(async () => success([])),
-    openRecentProject: vi.fn(async () => success(project)),
-    removeRecentProject: vi.fn(async () => success(undefined)),
-    getWindowContext: vi.fn(async () => success<WindowContext>({ kind: 'startup' })),
-    closeCurrentProject: vi.fn(async () => success(undefined)),
-    ...overrides,
+    startup: {
+      selectProjectDirectory: vi.fn(async () => success(null)),
+      selectSourceFile: vi.fn(async () => success(null)),
+      createProject: vi.fn(async () => success(project)),
+      openProjectFromDialog: vi.fn(async () => success({ kind: 'cancelled' as const })),
+      listRecentProjects: vi.fn(async () => success([])),
+      openRecentProject: vi.fn(async () => success({ kind: 'opened' as const, project })),
+      confirmProjectOpen: vi.fn(async () => success({ kind: 'opened' as const, project })),
+      removeRecentProject: vi.fn(async () => success(undefined)),
+      ...overrides.startup,
+    },
+    project: {
+      getBootstrap: vi.fn(async () => success(workspaceBootstrap)),
+      recordLastPage: vi.fn(async () => success(undefined)),
+      close: vi.fn(async () => success(undefined)),
+      ...overrides.project,
+    },
+    novelImport: {
+      probe: vi.fn(),
+      start: vi.fn(),
+      getTask: vi.fn(),
+      cancelTask: vi.fn(),
+      retryTask: vi.fn(),
+      getReviewSnapshot: vi.fn(),
+      getTextSlice: vi.fn(),
+      previewReview: vi.fn(),
+      applyReview: vi.fn(),
+      onEvent: vi.fn(() => () => {}),
+    },
+    system: {
+      getCoreHealth: vi.fn(async () => success(workspaceBootstrap.coreHealth)),
+      restartCore: vi.fn(async () => success(undefined)),
+    },
   };
 }
 
@@ -110,12 +169,13 @@ function buttonByText(wrapper: ReturnType<typeof mount>, text: string) {
 afterEach(() => {
   vi.restoreAllMocks();
   document.head.querySelectorAll('style[data-page-style]').forEach(element => element.remove());
+  document.body.innerHTML = '';
   document.body.className = '';
 });
 
 describe('new project page', () => {
   it('三个输入全部有效后才能创建，并提交显式项目名称', async () => {
-    const api = createApi({
+    const api = createApi({ startup: {
       selectProjectDirectory: vi.fn(async () => success({
         selectionId: 'directory-token',
         name: 'empty-project',
@@ -126,7 +186,7 @@ describe('new project page', () => {
         name: 'download-18472.txt',
         displayPath: '/downloads/download-18472.txt',
       })),
-    });
+    } });
     Object.defineProperty(window, 'voxweaver', { configurable: true, value: api });
     const router = await createTestRouter('/new-project');
     const wrapper = mount(NewProjectPage, { global: { plugins: [router] } });
@@ -143,7 +203,7 @@ describe('new project page', () => {
 
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(api.createProject).toHaveBeenCalledWith({
+    expect(api.startup.createProject).toHaveBeenCalledWith({
       displayName: '雨夜来信',
       directorySelectionId: 'directory-token',
       sourceSelectionId: 'source-token',
@@ -153,14 +213,14 @@ describe('new project page', () => {
   });
 
   it('创建失败后保留三个输入并允许重试', async () => {
-    const createProject = vi.fn<DesktopApi['createProject']>()
+    const createProject = vi.fn<DesktopApi['startup']['createProject']>()
       .mockResolvedValueOnce(failure<ProjectSummary>({
         code: 'PROJECT_DIRECTORY_NOT_EMPTY',
         message: '项目目录不是空目录。',
         retryable: true,
       }))
       .mockResolvedValueOnce(success(project));
-    const api = createApi({
+    const api = createApi({ startup: {
       createProject,
       selectProjectDirectory: vi.fn(async () => success({
         selectionId: 'directory-token',
@@ -172,7 +232,7 @@ describe('new project page', () => {
         name: 'download-18472.txt',
         displayPath: '/downloads/download-18472.txt',
       })),
-    });
+    } });
     Object.defineProperty(window, 'voxweaver', { configurable: true, value: api });
     const router = await createTestRouter('/new-project');
     const wrapper = mount(NewProjectPage, { global: { plugins: [router] } });
@@ -198,10 +258,10 @@ describe('new project page', () => {
 
 describe('startup home page', () => {
   it('首次查询完成前保持加载态，不误显示空状态', async () => {
-    const pending = createDeferred<Awaited<ReturnType<DesktopApi['listRecentProjects']>>>();
-    const api = createApi({
+    const pending = createDeferred<Awaited<ReturnType<DesktopApi['startup']['listRecentProjects']>>>();
+    const api = createApi({ startup: {
       listRecentProjects: vi.fn(() => pending.promise),
-    });
+    } });
     Object.defineProperty(window, 'voxweaver', { configurable: true, value: api });
     const router = await createTestRouter('/startup');
     const wrapper = mount(StartupHomePage, { global: { plugins: [router] } });
@@ -220,9 +280,9 @@ describe('startup home page', () => {
   });
 
   it('移除最后一个最近项目后进入空状态且不渲染最近区', async () => {
-    const api = createApi({
+    const api = createApi({ startup: {
       listRecentProjects: vi.fn(async () => success([recentProject])),
-    });
+    } });
     Object.defineProperty(window, 'voxweaver', { configurable: true, value: api });
     const router = await createTestRouter('/startup');
     const wrapper = mount(StartupHomePage, { global: { plugins: [router] } });
@@ -234,7 +294,7 @@ describe('startup home page', () => {
     const remove = wrapper.get('[aria-label="从最近项目移除 雨夜来信"]');
     await remove.trigger('click');
     await flushPromises();
-    expect(api.removeRecentProject).toHaveBeenCalledWith(project.projectId);
+    expect(api.startup.removeRecentProject).toHaveBeenCalledWith(project.projectId);
     expect(wrapper.find('.recent-projects').exists()).toBe(false);
     expect(wrapper.find('.startup-content--empty').exists()).toBe(true);
     expect(wrapper.text()).not.toContain('暂无最近项目');
@@ -242,10 +302,10 @@ describe('startup home page', () => {
   });
 
   it('显示全部最近项目总数，并在成功打开后采用后端刷新顺序', async () => {
-    const listRecentProjects = vi.fn<DesktopApi['listRecentProjects']>()
+    const listRecentProjects = vi.fn<DesktopApi['startup']['listRecentProjects']>()
       .mockResolvedValueOnce(success([recentProject, secondRecentProject]))
       .mockResolvedValueOnce(success([secondRecentProject, recentProject]));
-    const api = createApi({ listRecentProjects });
+    const api = createApi({ startup: { listRecentProjects } });
     Object.defineProperty(window, 'voxweaver', { configurable: true, value: api });
     const router = await createTestRouter('/startup');
     const wrapper = mount(StartupHomePage, { global: { plugins: [router] } });
@@ -259,16 +319,16 @@ describe('startup home page', () => {
       throw new Error('Missing second recent project button');
     await secondProjectButton.trigger('click');
     await flushPromises();
-    expect(api.openRecentProject).toHaveBeenCalledWith(secondRecentProject.projectId);
+    expect(api.startup.openRecentProject).toHaveBeenCalledWith(secondRecentProject.projectId);
     expect(listRecentProjects).toHaveBeenCalledTimes(2);
     expect(wrapper.findAll('.recent-project-name').map(item => item.text())).toEqual(['星海旧梦', '雨夜来信']);
     wrapper.unmount();
   });
 
   it('仅渐隐当前可视区末行，滚动到底后取消渐隐', async () => {
-    const api = createApi({
+    const api = createApi({ startup: {
       listRecentProjects: vi.fn(async () => success([recentProject, secondRecentProject, thirdRecentProject])),
-    });
+    } });
     Object.defineProperty(window, 'voxweaver', { configurable: true, value: api });
     const router = await createTestRouter('/startup');
     const wrapper = mount(StartupHomePage, { global: { plugins: [router] } });
@@ -300,9 +360,9 @@ describe('startup home page', () => {
   });
 
   it('保留目录省略与独立滚动容器所需的结构契约', async () => {
-    const api = createApi({
+    const api = createApi({ startup: {
       listRecentProjects: vi.fn(async () => success([recentProject])),
-    });
+    } });
     Object.defineProperty(window, 'voxweaver', { configurable: true, value: api });
     const router = await createTestRouter('/startup');
     const wrapper = mount(StartupHomePage, { global: { plugins: [router] } });
@@ -315,12 +375,46 @@ describe('startup home page', () => {
     expect(directory.text()).toBe(recentProject.directoryPath);
     wrapper.unmount();
   });
+
+  it('迁移或失效锁必须通过 Element Plus 确认框显式确认', async () => {
+    const confirmationToken = 'confirmation-token';
+    const api = createApi({ startup: {
+      listRecentProjects: vi.fn(async () => success([recentProject])),
+      openRecentProject: vi.fn(async () => success({
+        kind: 'confirmation-required',
+        confirmationToken,
+        expiresAt: '2026-08-12T10:05:00.000Z',
+        operations: ['migrate-v1'],
+        project,
+        riskSummary: ['将备份旧文件并迁移到 layout v2。'],
+      } satisfies ProjectOpenOutcomeDto)),
+    } });
+    Object.defineProperty(window, 'voxweaver', { configurable: true, value: api });
+    const router = await createTestRouter('/startup');
+    const wrapper = mount(StartupHomePage, {
+      attachTo: document.body,
+      global: { plugins: [router, ElementPlus] },
+    });
+    await flushPromises();
+
+    await wrapper.get('.recent-project-open').trigger('click');
+    await flushPromises();
+    expect(document.body.textContent).toContain('打开项目前需要确认');
+    expect(document.body.textContent).toContain('将备份旧文件并迁移到 layout v2。');
+    const confirmButton = [...document.body.querySelectorAll('button')]
+      .find(button => button.textContent?.includes('确认并打开')) as HTMLButtonElement | undefined;
+    expect(confirmButton).toBeDefined();
+    confirmButton?.click();
+    await flushPromises();
+    expect(api.startup.confirmProjectOpen).toHaveBeenCalledWith(confirmationToken);
+    wrapper.unmount();
+  });
 });
 
 describe('workspace text page', () => {
   it('工作台只显示真实项目上下文和禁用的后续入口', async () => {
     const api = createApi({
-      getWindowContext: vi.fn(async () => success<WindowContext>({ kind: 'project', project })),
+      project: { getBootstrap: vi.fn(async () => success(workspaceBootstrap)) },
     });
     Object.defineProperty(window, 'voxweaver', { configurable: true, value: api });
     const wrapper = mount(WorkspaceTextPage);
