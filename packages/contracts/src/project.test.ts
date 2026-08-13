@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   normalizeProjectDisplayName,
+  parseAnyProjectManifest,
   parseProjectManifest,
   PROJECT_LAYOUT_VERSION,
   PROJECT_SCHEMA_VERSION,
@@ -15,6 +16,7 @@ const validManifest = {
   projectId: '43f7ced7-98dd-44c1-9b3b-204510d9910d',
   displayName: '雨夜来信',
   createdAt: '2026-08-12T08:00:00.000Z',
+  updatedAt: '2026-08-12T08:00:00.000Z',
   stateDatabase: PROJECT_STATE_DATABASE_PATH,
   sourceAsset: {
     id: '8a5b03d2-a442-45d5-993a-b61998c00cb8',
@@ -38,10 +40,24 @@ test('项目名称拒绝空值和控制字符', () => {
   }
 });
 
-test('manifest v1 可以解析且不从文件名推断项目名称', () => {
+test('manifest v2 可以解析且不从文件名推断项目名称', () => {
   const parsed = parseProjectManifest(validManifest);
   assert.equal(parsed.displayName, '雨夜来信');
   assert.equal(parsed.sourceAsset.originalName, 'download-18472.txt');
+});
+
+test('layout v1 只能通过兼容 parser 识别并要求显式迁移', () => {
+  const legacy = {
+    ...validManifest,
+    layoutVersion: 1,
+  };
+  delete (legacy as Partial<typeof legacy>).updatedAt;
+
+  assert.equal(parseAnyProjectManifest(legacy).layoutVersion, 1);
+  assert.throws(
+    () => parseProjectManifest(legacy),
+    (error: unknown) => error instanceof VoxWeaverError && error.code === 'PROJECT_MIGRATION_REQUIRED',
+  );
 });
 
 test('未知 manifest 版本被拒绝', () => {

@@ -28,6 +28,8 @@ export interface ProjectCatalogRecord {
   directoryPath: string;
   sourceFileName: string;
   createdAt: string;
+  updatedAt: string;
+  layoutVersion: number;
   lastOpenedAt: string;
 }
 
@@ -120,6 +122,8 @@ export class ProjectApplicationService {
         displayName: record.displayName,
         sourceFileName: record.sourceFileName,
         createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        layoutVersion: record.layoutVersion as 2,
         directoryPath: record.directoryPath,
         lastOpenedAt: record.lastOpenedAt,
         availability: inspection.availability,
@@ -143,6 +147,8 @@ export class ProjectApplicationService {
       directoryPath: project.rootPath,
       sourceFileName: project.manifest.sourceAsset.originalName,
       createdAt: project.manifest.createdAt,
+      updatedAt: project.manifest.updatedAt,
+      layoutVersion: project.manifest.layoutVersion,
       lastOpenedAt: this.#now().toISOString(),
     };
 

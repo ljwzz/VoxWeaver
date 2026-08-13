@@ -1,11 +1,22 @@
+import type { ProjectMigrationPhase } from './nodeProjectWorkspace.ts';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { VoxWeaverError } from '@voxweaver/contracts';
-import { NodeProjectWorkspace } from './nodeProjectWorkspace.ts';
+import {
+  PROJECT_LAYOUT_VERSION,
+  PROJECT_SCHEMA_VERSION,
+  PROJECT_STATE_DATABASE_PATH,
+  VoxWeaverError,
+} from '@voxweaver/contracts';
+import {
+  NodeProjectWorkspace,
+  PROJECT_DATABASE_VERSION,
+  PROJECT_LAYOUT_DIRECTORIES,
+
+} from './nodeProjectWorkspace.ts';
 
 const temporaryDirectories: string[] = [];
 
@@ -35,9 +46,11 @@ test('在选定的空目录中创建可重新打开的项目', async () => {
   assert.equal(created.rootPath, fixture.projectPath);
   assert.equal(created.manifest.displayName, '雨夜来信');
   assert.equal(created.manifest.sourceAsset.originalName, 'download-18472.txt');
+  assert.equal(created.manifest.layoutVersion, 2);
+  assert.equal(created.manifest.updatedAt, created.manifest.createdAt);
   assert.deepEqual(
     (await readdir(fixture.projectPath)).sort(),
-    ['artifacts', 'exports', 'inputs', 'project.json', 'state', 'tmp'],
+    ['artifacts', 'cache', 'exports', 'inputs', 'logs', 'project.json', 'state', 'tmp'],
   );
 
   const copiedSource = path.join(fixture.projectPath, ...created.manifest.sourceAsset.relativePath.split('/'));
@@ -45,6 +58,261 @@ test('在选定的空目录中创建可重新打开的项目', async () => {
 
   const reopened = await workspace.openProject(fixture.projectPath);
   assert.equal(reopened.manifest.projectId, created.manifest.projectId);
+  for (const relativeDirectory of PROJECT_LAYOUT_DIRECTORIES)
+    assert.equal((await readdir(path.dirname(path.join(fixture.projectPath, relativeDirectory)))).length >= 0, true);
+
+  const database = new DatabaseSync(path.join(fixture.projectPath, PROJECT_STATE_DATABASE_PATH), { readOnly: true });
+  try {
+    const version = database.prepare('PRAGMA user_version').get() as { user_version: number };
+    assert.equal(version.user_version, PROJECT_DATABASE_VERSION);
+    const tables = new Set((database.prepare(`
+      SELECT name FROM sqlite_schema WHERE type = 'table'
+    `).all() as unknown as Array<{ name: string }>).map(row => row.name));
+    for (const table of [
+      'artifact_revision',
+      'artifact_dependency',
+      'stale_cause',
+      'task',
+      'stage_run',
+      'review_decision',
+      'workspace_state',
+      'novel_import_revision',
+    ]) {
+      assert.equal(tables.has(table), true, `missing ${table}`);
+    }
+  } finally {
+    database.close();
+  }
+});
+
+async function downgradeProjectToLayoutV1(projectPath: string): Promise<void> {
+  const manifestPath = path.join(projectPath, 'project.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
+  manifest.layoutVersion = 1;
+  delete manifest.updatedAt;
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+  const database = new DatabaseSync(path.join(projectPath, PROJECT_STATE_DATABASE_PATH));
+  try {
+    const project = database.prepare('SELECT id, display_name, created_at FROM project LIMIT 1').get() as {
+      id: string;
+      display_name: string;
+      created_at: string;
+    };
+    database.exec(`
+      DROP TABLE IF EXISTS novel_import_review_preview;
+      DROP TABLE IF EXISTS novel_import_revision;
+      DROP TABLE IF EXISTS workspace_state;
+      DROP TABLE IF EXISTS review_decision;
+      DROP TABLE IF EXISTS stage_run;
+      DROP TABLE IF EXISTS task;
+      DROP TABLE IF EXISTS stale_cause;
+      DROP TABLE IF EXISTS artifact_dependency;
+      DROP TABLE IF EXISTS artifact_revision;
+      PRAGMA foreign_keys = OFF;
+      DROP TABLE project;
+      CREATE TABLE project (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      ) STRICT;
+      PRAGMA user_version = 1;
+    `);
+    database.prepare('INSERT INTO project (id, display_name, created_at) VALUES (?, ?, ?)')
+      .run(project.id, project.display_name, project.created_at);
+    database.prepare('UPDATE schema_info SET value = ? WHERE key = ?').run('1', 'layout_version');
+  } finally {
+    database.close();
+  }
+}
+
+test('layout v1 必须显式迁移并保留备份', async () => {
+  const fixture = await createFixture();
+  const workspace = new NodeProjectWorkspace();
+  const created = await workspace.createProject({
+    displayName: '雨夜来信',
+    rootPath: fixture.projectPath,
+    sourcePath: fixture.sourcePath,
+  });
+  await downgradeProjectToLayoutV1(fixture.projectPath);
+
+  const inspection = await workspace.inspectOpenProject(fixture.projectPath);
+  assert.equal(inspection.status, 'migration-required');
+  await assert.rejects(
+    workspace.openProject(fixture.projectPath),
+    (error: unknown) => error instanceof VoxWeaverError && error.code === 'PROJECT_MIGRATION_REQUIRED',
+  );
+
+  const migrated = await workspace.migrateProject(fixture.projectPath, inspection);
+  assert.equal(migrated.manifest.layoutVersion, PROJECT_LAYOUT_VERSION);
+  assert.equal(migrated.manifest.schemaVersion, PROJECT_SCHEMA_VERSION);
+  assert.equal(migrated.manifest.projectId, created.manifest.projectId);
+  const backups = await readdir(path.join(fixture.projectPath, 'state', 'backups'));
+  assert.equal(backups.length, 1);
+  assert.deepEqual(
+    (await readdir(path.join(fixture.projectPath, 'state', 'backups', backups[0]!))).sort(),
+    ['project.v1.json', 'project.v1.sqlite'],
+  );
+});
+
+test('迁移确认后的文件身份变化会被拒绝', async () => {
+  const fixture = await createFixture();
+  const workspace = new NodeProjectWorkspace();
+  await workspace.createProject({
+    displayName: '雨夜来信',
+    rootPath: fixture.projectPath,
+    sourcePath: fixture.sourcePath,
+  });
+  await downgradeProjectToLayoutV1(fixture.projectPath);
+  const inspection = await workspace.inspectOpenProject(fixture.projectPath);
+  await writeFile(path.join(fixture.projectPath, 'project.json'), `${await readFile(path.join(fixture.projectPath, 'project.json'), 'utf8')} `, 'utf8');
+
+  await assert.rejects(
+    workspace.migrateProject(fixture.projectPath, inspection),
+    (error: unknown) => error instanceof VoxWeaverError && error.code === 'CONFIRMATION_STATE_CHANGED',
+  );
+});
+
+for (const failurePhase of [
+  'backup-created',
+  'temporary-database-ready',
+  'temporary-manifest-ready',
+  'database-replaced',
+  'manifest-replaced',
+] as const satisfies readonly ProjectMigrationPhase[]) {
+  test(`迁移在 ${failurePhase} 失败后恢复 v1 manifest 和数据库`, async () => {
+    const fixture = await createFixture();
+    const setupWorkspace = new NodeProjectWorkspace();
+    const created = await setupWorkspace.createProject({
+      displayName: '雨夜来信',
+      rootPath: fixture.projectPath,
+      sourcePath: fixture.sourcePath,
+    });
+    await downgradeProjectToLayoutV1(fixture.projectPath);
+    const beforeManifest = await readFile(path.join(fixture.projectPath, 'project.json'));
+    const inspection = await setupWorkspace.inspectOpenProject(fixture.projectPath);
+    const failingWorkspace = new NodeProjectWorkspace({
+      onMigrationPhase: (phase) => {
+        if (phase === failurePhase)
+          throw new Error(`injected migration failure: ${phase}`);
+      },
+    });
+
+    await assert.rejects(
+      failingWorkspace.migrateProject(fixture.projectPath, inspection),
+      (error: unknown) => error instanceof VoxWeaverError && error.code === 'PROJECT_MIGRATION_FAILED',
+    );
+
+    assert.deepEqual(await readFile(path.join(fixture.projectPath, 'project.json')), beforeManifest);
+    const recovered = await setupWorkspace.inspectOpenProject(fixture.projectPath);
+    assert.equal(recovered.status, 'migration-required');
+    assert.equal(recovered.manifest.projectId, created.manifest.projectId);
+    const database = new DatabaseSync(path.join(fixture.projectPath, PROJECT_STATE_DATABASE_PATH), { readOnly: true });
+    try {
+      assert.equal((database.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, 1);
+    } finally {
+      database.close();
+    }
+  });
+}
+
+test('活跃写锁期间不回滚其他会话的迁移 journal', async () => {
+  const fixture = await createFixture();
+  const setupWorkspace = new NodeProjectWorkspace();
+  const created = await setupWorkspace.createProject({
+    displayName: '雨夜来信',
+    rootPath: fixture.projectPath,
+    sourcePath: fixture.sourcePath,
+  });
+  await downgradeProjectToLayoutV1(fixture.projectPath);
+  const inspection = await setupWorkspace.inspectOpenProject(fixture.projectPath);
+  const lock = await setupWorkspace.acquireWriteLock({
+    rootPath: fixture.projectPath,
+    projectId: created.manifest.projectId,
+    appInstanceId: 'migration-app',
+    projectSessionId: 'migration-session',
+  });
+
+  let signalBackupCreated: (() => void) | undefined;
+  let resumeMigration: (() => void) | undefined;
+  const backupCreated = new Promise<void>((resolve) => {
+    signalBackupCreated = resolve;
+  });
+  const migrationResume = new Promise<void>((resolve) => {
+    resumeMigration = resolve;
+  });
+  const migratingWorkspace = new NodeProjectWorkspace({
+    onMigrationPhase: async (phase) => {
+      if (phase === 'backup-created') {
+        signalBackupCreated?.();
+        await migrationResume;
+      }
+    },
+  });
+  const migration = migratingWorkspace.migrateProject(fixture.projectPath, inspection, lock);
+  await backupCreated;
+
+  try {
+    await assert.rejects(
+      new NodeProjectWorkspace().inspectOpenProject(fixture.projectPath),
+      (error: unknown) => error instanceof VoxWeaverError && error.code === 'PROJECT_WRITE_LOCK_ACTIVE',
+    );
+    const journal = JSON.parse(await readFile(
+      path.join(fixture.projectPath, 'state', 'migration-journal.json'),
+      'utf8',
+    )) as { phase?: unknown };
+    assert.equal(journal.phase, 'backup-created');
+  } finally {
+    resumeMigration?.();
+  }
+
+  const migrated = await migration;
+  assert.equal(migrated.manifest.layoutVersion, PROJECT_LAYOUT_VERSION);
+  await setupWorkspace.releaseWriteLock(fixture.projectPath, lock);
+});
+
+test('同项目写锁互斥并按完整会话身份释放', async () => {
+  const fixture = await createFixture();
+  const workspace = new NodeProjectWorkspace();
+  const created = await workspace.createProject({
+    displayName: '雨夜来信',
+    rootPath: fixture.projectPath,
+    sourcePath: fixture.sourcePath,
+  });
+  const lock = await workspace.acquireWriteLock({
+    rootPath: fixture.projectPath,
+    projectId: created.manifest.projectId,
+    appInstanceId: 'app-1',
+    projectSessionId: 'session-1',
+  });
+  await assert.rejects(
+    workspace.acquireWriteLock({
+      rootPath: fixture.projectPath,
+      projectId: created.manifest.projectId,
+      appInstanceId: 'app-1',
+      projectSessionId: 'session-2',
+    }),
+    (error: unknown) => error instanceof VoxWeaverError && error.code === 'PROJECT_WRITE_LOCK_ACTIVE',
+  );
+  await assert.rejects(
+    workspace.releaseWriteLock(fixture.projectPath, { ...lock, projectSessionId: 'session-other' }),
+    (error: unknown) => error instanceof VoxWeaverError && error.code === 'PROJECT_SESSION_STALE',
+  );
+  await workspace.releaseWriteLock(fixture.projectPath, lock);
+  assert.equal((await workspace.inspectWriteLock(fixture.projectPath, created.manifest.projectId)).status, 'available');
+});
+
+test('最后生产页面只接受冻结页面键', async () => {
+  const fixture = await createFixture();
+  const workspace = new NodeProjectWorkspace();
+  await workspace.createProject({
+    displayName: '雨夜来信',
+    rootPath: fixture.projectPath,
+    sourcePath: fixture.sourcePath,
+  });
+  assert.equal(await workspace.readLastPage(fixture.projectPath), undefined);
+  await workspace.recordLastPage(fixture.projectPath, 'chapter-splitting');
+  assert.equal(await workspace.readLastPage(fixture.projectPath), 'chapter-splitting');
 });
 
 test('非空目录不会被覆盖', async () => {

@@ -13,6 +13,8 @@ const project: ProjectSummary = {
   displayName: '雨夜来信',
   sourceFileName: 'download-18472.txt',
   createdAt: '2026-08-12T08:00:00.000Z',
+  updatedAt: '2026-08-12T08:00:00.000Z',
+  layoutVersion: 2,
 };
 
 const recentProject: RecentProjectSummary = {
@@ -27,6 +29,8 @@ const secondRecentProject: RecentProjectSummary = {
   displayName: '星海旧梦',
   sourceFileName: 'novel.txt',
   createdAt: '2026-08-11T08:00:00.000Z',
+  updatedAt: '2026-08-11T08:00:00.000Z',
+  layoutVersion: 2,
   directoryPath: '/Users/example/Documents/star-sea',
   lastOpenedAt: '2026-08-11T09:00:00.000Z',
   availability: 'available',
@@ -37,6 +41,8 @@ const thirdRecentProject: RecentProjectSummary = {
   displayName: '山城回声',
   sourceFileName: 'echo.txt',
   createdAt: '2026-08-10T08:00:00.000Z',
+  updatedAt: '2026-08-10T08:00:00.000Z',
+  layoutVersion: 2,
   directoryPath: '/Users/example/Documents/mountain-echo',
   lastOpenedAt: '2026-08-10T09:00:00.000Z',
   availability: 'available',

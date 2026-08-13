@@ -7,10 +7,11 @@ import { ProjectApplicationService } from './projectApplicationService.ts';
 
 const manifest: ProjectManifest = {
   schemaVersion: 1,
-  layoutVersion: 1,
+  layoutVersion: 2,
   projectId: '43f7ced7-98dd-44c1-9b3b-204510d9910d',
   displayName: '雨夜来信',
   createdAt: '2026-08-12T08:00:00.000Z',
+  updatedAt: '2026-08-12T08:00:00.000Z',
   stateDatabase: 'state/project.sqlite',
   sourceAsset: {
     id: '8a5b03d2-a442-45d5-993a-b61998c00cb8',
@@ -78,6 +79,8 @@ function catalogRecord(
     directoryPath,
     sourceFileName: `${projectId}.txt`,
     createdAt: manifest.createdAt,
+    updatedAt: manifest.updatedAt,
+    layoutVersion: manifest.layoutVersion,
     lastOpenedAt,
   };
 }
@@ -104,6 +107,8 @@ test('最近项目返回目录和可用状态', async () => {
     directoryPath: '/projects/rain',
     sourceFileName: manifest.sourceAsset.originalName,
     createdAt: manifest.createdAt,
+    updatedAt: manifest.updatedAt,
+    layoutVersion: manifest.layoutVersion,
     lastOpenedAt: '2026-08-12T09:00:00.000Z',
   }];
   const service = new ProjectApplicationService(new MemoryWorkspace(), catalog);

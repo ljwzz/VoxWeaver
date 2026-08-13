@@ -25,6 +25,8 @@ test('catalog 返回全部项目并按打开时间倒序、项目 ID 稳定排�
         directoryPath: path.join(basePath, `project-${index}`),
         sourceFileName: `source-${index}.txt`,
         createdAt: new Date(baseTime - 3_600_000).toISOString(),
+        updatedAt: new Date(baseTime - 3_600_000).toISOString(),
+        layoutVersion: 2,
         lastOpenedAt: new Date(baseTime + index * 1_000).toISOString(),
       });
     }
@@ -36,6 +38,8 @@ test('catalog 返回全部项目并按打开时间倒序、项目 ID 稳定排�
         directoryPath: path.join(basePath, projectId),
         sourceFileName: `${projectId}.txt`,
         createdAt: new Date(baseTime - 3_600_000).toISOString(),
+        updatedAt: new Date(baseTime - 3_600_000).toISOString(),
+        layoutVersion: 2,
         lastOpenedAt: tiedLastOpenedAt,
       });
     }
@@ -65,6 +69,8 @@ test('移除最近记录不会删除项目目录', async () => {
       directoryPath: projectPath,
       sourceFileName: 'source.txt',
       createdAt: '2026-08-12T08:00:00.000Z',
+      updatedAt: '2026-08-12T08:00:00.000Z',
+      layoutVersion: 2,
       lastOpenedAt: '2026-08-12T09:00:00.000Z',
     });
     await catalog.remove('project-1');
@@ -87,6 +93,8 @@ test('同一项目移动后按项目 ID 更新目录', async () => {
       directoryPath: path.join(basePath, 'before'),
       sourceFileName: 'source.txt',
       createdAt: '2026-08-12T08:00:00.000Z',
+      updatedAt: '2026-08-12T08:00:00.000Z',
+      layoutVersion: 2,
       lastOpenedAt: '2026-08-12T09:00:00.000Z',
     };
     await catalog.upsert(record);
@@ -114,6 +122,8 @@ test('不同目录允许使用相同项目名称', async () => {
       displayName: '同名项目',
       sourceFileName: 'source.txt',
       createdAt: '2026-08-12T08:00:00.000Z',
+      updatedAt: '2026-08-12T08:00:00.000Z',
+      layoutVersion: 2,
     };
     await catalog.upsert({
       ...common,

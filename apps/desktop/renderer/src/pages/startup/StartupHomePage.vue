@@ -31,7 +31,7 @@ function setFailure(message: string): void {
   statusMessage.value = message;
 }
 
-function setWarnings(warnings?: string[]): void {
+function setWarnings(warnings?: readonly string[]): void {
   if (!warnings?.length)
     return;
   statusKind.value = 'info';
