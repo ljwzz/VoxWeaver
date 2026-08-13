@@ -180,6 +180,9 @@ importers:
       '@voxweaver/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@voxweaver/novel-import':
+        specifier: workspace:*
+        version: link:../../packages/novel-import
       '@voxweaver/project-workspace':
         specifier: workspace:*
         version: link:../../packages/project-workspace

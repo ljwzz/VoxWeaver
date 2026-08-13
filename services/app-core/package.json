@@ -13,6 +13,7 @@
   "dependencies": {
     "@voxweaver/application": "workspace:*",
     "@voxweaver/contracts": "workspace:*",
+    "@voxweaver/novel-import": "workspace:*",
     "@voxweaver/project-workspace": "workspace:*"
   },
   "devDependencies": {
