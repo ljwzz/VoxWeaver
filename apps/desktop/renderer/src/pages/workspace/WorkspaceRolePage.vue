@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import DemoModuleButton from '@/components/demo/DemoModuleButton.vue';
+import DemoPageButton from '@/components/demo/DemoPageButton.vue';
 import PageDocument from '@/components/PageDocument.vue';
 import pageStyles1 from './styles.css?inline';
 
-const bodyClasses = ["workspace-view","workspace-view--role"] as const;
+const bodyClasses = ['workspace-view', 'workspace-view--role'] as const;
 const styleSheets = [pageStyles1] as const;
 </script>
 
@@ -11,7 +13,7 @@ const styleSheets = [pageStyles1] as const;
     :body-classes="bodyClasses"
     :style-sheets="styleSheets"
   >
-    <main class="workspace" aria-label="VoxWeaver 角色管理静态展示">
+    <main class="workspace" aria-label="VoxWeaver 角色管理交互预览">
           <header class="window-titlebar">
             <img class="window-controls" src="./assets/window-controls.svg" width="42" height="10" alt="" aria-hidden="true">
             <p class="window-title">VoxWeaver · 示例小说</p>
@@ -19,17 +21,25 @@ const styleSheets = [pageStyles1] as const;
           </header>
 
           <div class="workspace-body">
-            <aside class="activity-rail" aria-label="功能分组展示状态">
+            <aside class="activity-rail" aria-label="功能分组导航">
               <div class="activity-list">
-                <div class="activity-item" aria-label="文本整理，展示状态"><span class="activity-glyph">文</span></div>
-                <div class="activity-item activity-item--selected" aria-label="角色管理，当前选中">
+                <DemoModuleButton module-key="text" class="activity-item">
+                  <span class="activity-glyph">文</span>
+                </DemoModuleButton>
+                <DemoModuleButton module-key="role" class="activity-item activity-item--selected">
                   <span class="activity-glyph">角</span>
                   <span class="selection-bar" aria-hidden="true"></span>
-                </div>
-                <div class="activity-item" aria-label="音频生成，展示状态"><span class="activity-glyph">音</span></div>
-                <div class="activity-item" aria-label="后期处理，展示状态"><span class="activity-glyph">后</span></div>
+                </DemoModuleButton>
+                <DemoModuleButton module-key="audio" class="activity-item">
+                  <span class="activity-glyph">音</span>
+                </DemoModuleButton>
+                <DemoModuleButton module-key="post" class="activity-item">
+                  <span class="activity-glyph">后</span>
+                </DemoModuleButton>
               </div>
-              <div class="activity-item" aria-label="设置，展示状态"><span class="activity-glyph">设</span></div>
+              <DemoModuleButton module-key="settings" class="activity-item">
+                <span class="activity-glyph">设</span>
+              </DemoModuleButton>
             </aside>
 
             <aside class="context-sidebar" aria-label="角色管理上下文侧栏">
@@ -40,24 +50,18 @@ const styleSheets = [pageStyles1] as const;
                       <h1>角色管理</h1>
                       <span class="sidebar-actions" aria-hidden="true"><span>＋</span><span>⋯</span></span>
                     </div>
-                    <p class="sidebar-subtitle">5 个视图 · 4 项待确认</p>
+                    <p class="sidebar-subtitle">3 个子功能 · 5 项待复核</p>
                   </header>
 
-                  <div class="sidebar-item sidebar-item--selected" aria-label="角色档案，已选择">
-                    <span class="sidebar-state" aria-hidden="true">✓</span><span class="sidebar-label">角色档案</span><span class="sidebar-count">18</span>
-                  </div>
-                  <div class="sidebar-item sidebar-item--review" aria-label="别名与称谓，待确认">
-                    <span class="sidebar-state" aria-hidden="true">!</span><span class="sidebar-label">别名与称谓</span><span class="sidebar-count">4</span>
-                  </div>
-                  <div class="sidebar-item sidebar-item--default" aria-label="声线配置，展示状态">
-                    <span class="sidebar-state" aria-hidden="true"></span><span class="sidebar-label">声线配置</span><span class="sidebar-count">12</span>
-                  </div>
-                  <div class="sidebar-item sidebar-item--processing" aria-label="关系与模仿，处理中">
-                    <span class="sidebar-state" aria-hidden="true">◔</span><span class="sidebar-label">关系与模仿</span><span class="sidebar-count">2</span>
-                  </div>
-                  <div class="sidebar-item sidebar-item--failed" aria-label="冲突待确认，失败">
-                    <span class="sidebar-state" aria-hidden="true">×</span><span class="sidebar-label">冲突待确认</span><span class="sidebar-count">1</span>
-                  </div>
+                  <DemoPageButton page-slug="primary-character-marking" class="sidebar-item sidebar-item--default">
+                    <span class="sidebar-state" aria-hidden="true"></span><span class="sidebar-label">主要角色标记</span><span class="sidebar-count">18</span>
+                  </DemoPageButton>
+                  <DemoPageButton page-slug="crowd-voice-pool" class="sidebar-item sidebar-item--review">
+                    <span class="sidebar-state" aria-hidden="true">!</span><span class="sidebar-label">路人声音池</span><span class="sidebar-count">24</span>
+                  </DemoPageButton>
+                  <DemoPageButton page-slug="character-voice-refinement" class="sidebar-item sidebar-item--processing">
+                    <span class="sidebar-state" aria-hidden="true">◔</span><span class="sidebar-label">角色声音精修</span><span class="sidebar-count">12</span>
+                  </DemoPageButton>
                 </div>
 
                 <section class="sidebar-summary" aria-label="项目摘要"><h2>示例小说</h2><p>36 章 · 总进度 62%</p></section>
