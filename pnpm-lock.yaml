@@ -143,6 +143,22 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
 
+  packages/novel-import:
+    dependencies:
+      '@voxweaver/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      iconv-lite:
+        specifier: 0.7.3
+        version: 0.7.3
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   packages/project-workspace:
     dependencies:
       '@voxweaver/contracts':
@@ -2644,6 +2660,10 @@ packages:
 
   iconv-lite@0.6.2:
     resolution: {integrity: sha512-2y91h5OpQlolefMPmUlivelittSWy0rP+oYVpn6A7GwVHNE8AWzoYOBNmlwks3LobaJxgHCYZAnyNo2GgpNRNQ==}
+    engines: {node: '>=0.10.0'}
+
+  iconv-lite@0.7.3:
+    resolution: {integrity: sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==}
     engines: {node: '>=0.10.0'}
 
   identifier-regex@1.1.0:
@@ -7520,6 +7540,10 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
     optional: true
+
+  iconv-lite@0.7.3:
+    dependencies:
+      safer-buffer: 2.1.2
 
   identifier-regex@1.1.0:
     dependencies:
