@@ -126,10 +126,33 @@ export interface SelectionResult {
 }
 
 export interface CreateProjectRequest {
-  displayName: string;
-  directorySelectionId: string;
-  sourceSelectionId: string;
+  readonly displayName: string;
+  readonly directorySelectionId: string;
+  readonly sourceSelectionId: string;
 }
+
+export type ProjectOpenConfirmationOperation = 'migrate-v1' | 'recover-stale-lock';
+
+export type ProjectOpenOutcomeDto
+  = | {
+    readonly kind: 'cancelled';
+  }
+  | {
+    readonly kind: 'opened';
+    readonly project: ProjectSummaryDto;
+  }
+  | {
+    readonly kind: 'focused';
+    readonly project: ProjectSummaryDto;
+  }
+  | {
+    readonly kind: 'confirmation-required';
+    readonly confirmationToken: string;
+    readonly expiresAt: string;
+    readonly operations: readonly ProjectOpenConfirmationOperation[];
+    readonly project: ProjectSummaryDto;
+    readonly riskSummary: readonly string[];
+  };
 
 export interface DesktopApi {
   selectProjectDirectory: () => Promise<AppResult<SelectionResult | null>>;
