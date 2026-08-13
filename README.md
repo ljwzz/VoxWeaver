@@ -60,9 +60,9 @@ VoxWeaver 计划覆盖以下制作环节：
 
 ## 本地开发
 
-当前工程使用 Electron Forge、Vite、Vue、Vue Router、Element Plus 与 Lucide Vue。项目启动流程已接入真实的项目名称、空目录与源文件选择，可创建或校验项目 manifest、项目 SQLite 和不可变源文件副本，并通过独立工作台窗口多开不同项目。启动页的最近项目目录使用应用级 SQLite 保存。
+当前工程使用 Electron Forge、Vite、Vue、Vue Router、Element Plus 与 Lucide Vue。项目生命周期、独立 Core 进程、多项目写会话、layout v2 迁移、不可变 SourceAsset 和应用级最近项目目录已接入真实文件系统与 SQLite。
 
-文本、角色、音频、后期和设置页面仍属于后续功能或设计预览，不接入 Provider、文本处理和任务调度；未实现入口在真实工作台中保持禁用。
+`/project` 是唯一正式工作台入口，包含文本、角色、音频、后期和设置五个模块。阶段 01 的 TXT 编码探测、导入任务、章节结构复核和 UTF-8 byte range 正文读取已接通；阶段 02～11、Provider、TTS、ASR 和完整工程备份仍通过真实能力门禁展示，不生成演示数据。`/pages/*` 仅在开发环境动态加载 Figma 预览，生产构建不注册这些路由。
 
 环境版本见 [`.nvmrc`](./.nvmrc) 与 [`package.json`](./package.json)。在仓库根目录执行：
 
@@ -71,7 +71,7 @@ corepack pnpm install
 corepack pnpm run dev
 ```
 
-`dev` 由 Electron Forge 启动主进程、预加载脚本与 Vite Renderer。应用默认进入项目启动页，页面目录位于 `#/pages`。完整校验与 macOS 本地打包：
+`dev` 由 Electron Forge 启动 Main、Preload、独立 Core 与 Vite Renderer。应用默认进入项目启动页；开发预览目录位于 `#/pages`。完整校验与 macOS 本地打包：
 
 ```bash
 corepack pnpm run check
@@ -80,7 +80,7 @@ corepack pnpm run package
 
 本地包输出到 `apps/desktop/out/VoxWeaver-darwin-arm64/VoxWeaver.app`。打包流程仅执行本机 ad-hoc 签名和完整性校验，不包含 Developer ID 签名、公证或发布。
 
-`check` 会校验代码规范、类型、项目与 catalog 测试、Vue 页面交互、48 条设计预览路由映射和生产窗口边界。
+`check` 会校验代码规范、类型、项目迁移与锁、Core transport、阶段 01 导入、Vue 页面交互、正式工作台路由、开发预览映射和生产边界。
 
 ## 项目文档
 
@@ -88,4 +88,4 @@ corepack pnpm run package
 
 ## 当前重点
 
-完成桌面端界面与交互设计，确认完整流程中的页面、关键操作、状态反馈和步骤间返回关系。
+稳定阶段 00/01 的运行态和恢复路径，并在相同 artifact、task、review 与能力门禁模型上推进阶段 02。
