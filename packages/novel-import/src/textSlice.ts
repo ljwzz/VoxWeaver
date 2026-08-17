@@ -18,7 +18,7 @@ export interface DecodeUtf8TextSliceInput {
   readonly sliceBytes: Uint8Array;
   readonly startByte: number;
   readonly endByte: number;
-  readonly totalByteLength: number;
+  readonly done: boolean;
 }
 
 export function readUtf8TextSlice(input: ReadUtf8TextSliceInput): TextSliceDto {
@@ -38,14 +38,6 @@ export function readUtf8TextSlice(input: ReadUtf8TextSliceInput): TextSliceDto {
     );
   }
 
-  if (endByte - startByte > NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES) {
-    throw invalidSlice(
-      'text_slice_too_large',
-      `单次正文读取不得超过 ${NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES} 字节。`,
-      { maximumByteLength: NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES },
-    );
-  }
-
   if (!isUtf8Boundary(textBytes, startByte) || !isUtf8Boundary(textBytes, endByte)) {
     throw invalidSlice(
       'text_slice_utf8_boundary',
@@ -54,12 +46,16 @@ export function readUtf8TextSlice(input: ReadUtf8TextSliceInput): TextSliceDto {
     );
   }
 
+  let actualEndByte = Math.min(endByte, startByte + NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES);
+  while (actualEndByte > startByte && !isUtf8Boundary(textBytes, actualEndByte))
+    actualEndByte -= 1;
+
   return decodeUtf8TextSlice({
     revisionId,
-    sliceBytes: textBytes.subarray(startByte, endByte),
+    sliceBytes: textBytes.subarray(startByte, actualEndByte),
     startByte,
-    endByte,
-    totalByteLength: textBytes.byteLength,
+    endByte: actualEndByte,
+    done: actualEndByte === endByte,
   });
 }
 
@@ -69,22 +65,21 @@ export function decodeUtf8TextSlice(input: DecodeUtf8TextSliceInput): TextSliceD
     sliceBytes,
     startByte,
     endByte,
-    totalByteLength,
+    done,
   } = input;
   if (typeof revisionId !== 'string'
     || revisionId.length === 0
     || !(sliceBytes instanceof Uint8Array)
     || !Number.isSafeInteger(startByte)
     || !Number.isSafeInteger(endByte)
-    || !Number.isSafeInteger(totalByteLength)
     || startByte < 0
     || endByte < startByte
-    || endByte > totalByteLength
-    || sliceBytes.byteLength !== endByte - startByte) {
+    || sliceBytes.byteLength !== endByte - startByte
+    || typeof done !== 'boolean') {
     throw invalidSlice(
       'text_slice_invalid_range',
       '正文 byte range 无效。',
-      { startByte, endByte, totalByteLength },
+      { startByte, endByte },
     );
   }
 
@@ -114,7 +109,7 @@ export function decodeUtf8TextSlice(input: DecodeUtf8TextSliceInput): TextSliceD
     revisionId,
     range: { offsetUnit: 'utf8-byte', startByte, endByte },
     text,
-    totalByteLength,
+    done,
   };
 }
 

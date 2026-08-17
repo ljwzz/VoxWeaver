@@ -3,6 +3,8 @@ import type {
   NovelImportProbeDto,
   NovelImportReviewCommandInput,
   NovelImportReviewSnapshotDto,
+  SourceTextPreviewDto,
+  SourceTextPreviewRequest,
   StalePreviewDto,
   StartNovelImportInput,
   TextSliceDto,
@@ -41,6 +43,7 @@ export const IPC_CHANNELS = Object.freeze({
   novelImportCancelTask: 'novel-import:cancel-task',
   novelImportRetryTask: 'novel-import:retry-task',
   novelImportGetReviewSnapshot: 'novel-import:get-review-snapshot',
+  novelImportGetSourcePreview: 'novel-import:get-source-preview',
   novelImportGetTextSlice: 'novel-import:get-text-slice',
   novelImportPreviewReview: 'novel-import:preview-review',
   novelImportApplyReview: 'novel-import:apply-review',
@@ -72,6 +75,7 @@ export interface DesktopApi {
     readonly cancelTask: (taskId: string) => Promise<AppResult<TaskSummaryDto>>;
     readonly retryTask: (taskId: string) => Promise<AppResult<TaskSummaryDto>>;
     readonly getReviewSnapshot: () => Promise<AppResult<NovelImportReviewSnapshotDto>>;
+    readonly getSourcePreview: (input: SourceTextPreviewRequest) => Promise<AppResult<SourceTextPreviewDto>>;
     readonly getTextSlice: (input: TextSliceRequest) => Promise<AppResult<TextSliceDto>>;
     readonly previewReview: (command: NovelImportReviewCommandInput) => Promise<AppResult<StalePreviewDto>>;
     readonly applyReview: (command: NovelImportReviewCommandInput) => Promise<AppResult<NovelImportReviewSnapshotDto>>;

@@ -13,9 +13,11 @@ import {
 
 const SOURCE_ASSET_ID = '33333333-3333-4333-8333-333333333333';
 
-test('import creates deterministic UTF-8 text, processor fingerprint, and chapter review data', () => {
+test('import normalizes text before chapter analysis and keeps SourceAsset bytes unchanged', () => {
   const text = '书名\r\n作者\u00A0甲\r\n\r\n　第一章　启程  \r\n内容甲😀\r\nChapter II - Return\n内容乙';
   const source = createAsset(Buffer.from(text, 'utf8'));
+  const originalSourceBytes = Buffer.from(source.bytes);
+  const normalized = '书名\n作者 甲\n\n　第一章　启程  \n内容甲😀\nChapter II - Return\n内容乙';
 
   const imported = importSourceAsset(source);
   const repeated = importSourceAsset(source);
@@ -24,34 +26,40 @@ test('import creates deterministic UTF-8 text, processor fingerprint, and chapte
   assert.equal(imported.schemaVersion, 1);
   assert.equal(imported.sourceEncoding, 'utf-8');
   assert.equal(imported.encodingMethod, 'strict-utf8');
-  assert.equal(imported.utf8Text.text, text);
-  assert.deepEqual(Buffer.from(imported.utf8Text.bytes), Buffer.from(text, 'utf8'));
-  assert.equal(imported.utf8Text.byteLength, Buffer.byteLength(text, 'utf8'));
-  assert.equal(imported.utf8Text.sha256, sha256Bytes(Buffer.from(text, 'utf8')));
+  assert.equal(imported.processorVersion, '2');
+  assert.equal(imported.utf8Text.text, normalized);
+  assert.deepEqual(Buffer.from(imported.utf8Text.bytes), Buffer.from(normalized, 'utf8'));
+  assert.equal(imported.utf8Text.byteLength, Buffer.byteLength(normalized, 'utf8'));
+  assert.equal(imported.utf8Text.sha256, sha256Bytes(Buffer.from(normalized, 'utf8')));
+  assert.deepEqual(Buffer.from(source.bytes), originalSourceBytes);
   assert.equal(imported.processorFingerprint, repeated.processorFingerprint);
-  assert.deepEqual(imported.candidates, repeated.candidates);
   assert.deepEqual(imported.chapters, repeated.chapters);
-
-  assert.equal(imported.candidates.length, 2);
-  assert.deepEqual(
-    imported.candidates.map(candidate => candidate.normalizedTitle),
-    ['第一章 启程', 'Chapter II - Return'],
-  );
-  for (const candidate of imported.candidates) {
-    const rawBytes = imported.utf8Text.bytes.subarray(
-      candidate.headingRange.startByte,
-      candidate.headingRange.endByte,
-    );
-    assert.equal(Buffer.from(rawBytes).toString('utf8'), candidate.rawTitle);
-  }
 
   assert.equal(imported.chapters.length, 2);
   assert.equal(imported.chapters[0]?.order, 1);
   assert.equal(imported.chapters[1]?.order, 2);
+  assert.deepEqual(imported.chapters.map(chapter => chapter.title), [
+    '第一章 启程',
+    'Chapter II - Return',
+  ]);
+  assert.deepEqual(imported.chapters.map(chapter => chapter.headingKind), [
+    'source',
+    'source',
+  ]);
+  assert.deepEqual(imported.chapters.map(chapter => chapter.lengthAnomalyAccepted), [
+    false,
+    false,
+  ]);
+  const firstHeading = imported.chapters[0]!.headingRange;
+  assert.ok(firstHeading);
+  assert.equal(
+    Buffer.from(imported.utf8Text.bytes.subarray(firstHeading.startByte, firstHeading.endByte)).toString('utf8'),
+    '第一章　启程',
+  );
   const firstContent = imported.chapters[0]!.contentRange;
   assert.equal(
     Buffer.from(imported.utf8Text.bytes.subarray(firstContent.startByte, firstContent.endByte)).toString('utf8'),
-    '内容甲😀\r\n',
+    '内容甲😀\n',
   );
 
   assert.equal(imported.coverage.complete, true);
@@ -59,31 +67,21 @@ test('import creates deterministic UTF-8 text, processor fingerprint, and chapte
   assert.equal(imported.coverage.unclassifiedByteLength, 0);
   assert.deepEqual(
     imported.coverage.segments.map(segment => segment.classification),
-    ['front-matter', 'chapter', 'chapter'],
+    ['chapter', 'chapter', 'chapter'],
   );
+  assert.deepEqual(imported.coverage.segments.map(segment => segment.reason), [
+    'uncovered-to-next',
+    undefined,
+    undefined,
+  ]);
+  assert.equal(imported.coverage.segments[0]?.chapterId, imported.chapters[0]?.chapterId);
   assert.deepEqual(imported.coverage.uncoveredRanges, []);
-
-  assert.ok(imported.normalizationProposals.length >= 6);
-  const nonBreakingSpace = imported.normalizationProposals.find(
-    proposal => proposal.beforeText === '\u00A0',
-  );
-  assert.equal(nonBreakingSpace?.afterText, ' ');
-  for (const proposal of imported.normalizationProposals) {
-    assert.equal(
-      Buffer.from(imported.utf8Text.bytes.subarray(
-        proposal.range.startByte,
-        proposal.range.endByte,
-      )).toString('utf8'),
-      proposal.beforeText,
-    );
-  }
 });
 
 test('documents without chapter headings remain explicitly uncovered', () => {
   const text = '只有正文\n没有可确认的章节标题';
   const imported = importSourceAsset(createAsset(Buffer.from(text, 'utf8')));
 
-  assert.deepEqual(imported.candidates, []);
   assert.deepEqual(imported.chapters, []);
   assert.equal(imported.coverage.complete, false);
   assert.equal(imported.coverage.classifiedByteLength, 0);
@@ -103,6 +101,43 @@ test('documents without chapter headings remain explicitly uncovered', () => {
       endByte: imported.utf8Text.byteLength,
     },
   ]);
+});
+
+test('a detected heading at the end of the document creates a legal empty chapter body', () => {
+  const imported = importSourceAsset(createAsset(Buffer.from('第一章 完', 'utf8')));
+
+  assert.equal(imported.chapters.length, 1);
+  assert.equal(
+    imported.chapters[0]!.contentRange.startByte,
+    imported.chapters[0]!.contentRange.endByte,
+  );
+  assert.equal(imported.chapters[0]!.headingKind, 'source');
+  assert.equal(imported.chapters[0]!.lengthAnomalyAccepted, false);
+});
+
+test('the current article title line is stored as heading instead of chapter content', () => {
+  const title = '第一章 山边小村';
+  const body = '二愣子睁大着双眼。';
+  const imported = importSourceAsset(createAsset(Buffer.from(`${title}\n${body}`, 'utf8')));
+  const chapter = imported.chapters[0]!;
+  const headingRange = chapter.headingRange!;
+
+  assert.equal(chapter.title, title);
+  assert.equal(chapter.headingKind, 'source');
+  assert.equal(
+    Buffer.from(imported.utf8Text.bytes.subarray(
+      headingRange.startByte,
+      headingRange.endByte,
+    )).toString('utf8'),
+    title,
+  );
+  assert.equal(
+    Buffer.from(imported.utf8Text.bytes.subarray(
+      chapter.contentRange.startByte,
+      chapter.contentRange.endByte,
+    )).toString('utf8'),
+    body,
+  );
 });
 
 test('legacy import persists decoded content as canonical UTF-8 bytes', () => {

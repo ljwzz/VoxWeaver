@@ -1,621 +1,470 @@
 <script setup lang="ts">
 import type {
-  NovelImportReviewCommandInput,
   NovelImportReviewSnapshotDto,
   StalePreviewDto,
-  TextSliceDto,
+  UpdateChapterStructureCommandInput,
 } from '@voxweaver/contracts';
+import type { ChapterBoundaryEdit } from '@/components/chapter-review/chapterReviewModel';
+import type {
+  ChapterMergeDirection,
+} from '@/components/chapter-review/chapterStructureDraftModel';
 
-import { NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES } from '@voxweaver/contracts';
-import { computed, shallowRef, watch } from 'vue';
+import { computed, shallowRef, useTemplateRef, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import ChapterCodeMirrorEditor from '@/components/chapter-review/ChapterCodeMirrorEditor.vue';
+import ChapterStructureFooter from '@/components/chapter-review/ChapterStructureFooter.vue';
+import ChapterStructureHeader from '@/components/chapter-review/ChapterStructureHeader.vue';
+import { useChapterDocument } from '@/components/chapter-review/useChapterDocument';
+import { useChapterStructureDraft } from '@/components/chapter-review/useChapterStructureDraft';
 import CapabilityGate from '@/components/workspace/CapabilityGate.vue';
-import WorkspacePageHeader from '@/components/workspace/WorkspacePageHeader.vue';
 import { useWorkspaceContext } from '@/workspace/context';
-import { getWorkspacePage } from '@/workspace/navigation';
+import { getProjectPageRouteName } from '@/workspace/navigation';
 
-const page = getWorkspacePage('chapter-splitting');
+type SubmissionMode = 'save' | 'next';
+
+const router = useRouter();
 const workspace = useWorkspaceContext();
+const chapterDocument = useChapterDocument();
+const chapterDraft = useChapterStructureDraft();
+const chapterEditor = useTemplateRef<InstanceType<typeof ChapterCodeMirrorEditor>>('chapterEditor');
+
 const snapshot = shallowRef<NovelImportReviewSnapshotDto>();
-const textSlice = shallowRef<TextSliceDto>();
-const selectedChapterIds = shallowRef<string[]>([]);
-const pendingCommand = shallowRef<NovelImportReviewCommandInput>();
+const pendingCommand = shallowRef<UpdateChapterStructureCommandInput>();
 const stalePreview = shallowRef<StalePreviewDto>();
-const dialogVisible = shallowRef(false);
-const boundaryDialogVisible = shallowRef(false);
-const boundaryChapterId = shallowRef('');
-const headingStartByte = shallowRef(0);
-const headingEndByte = shallowRef(0);
-const contentStartByte = shallowRef(0);
-const contentEndByte = shallowRef(0);
+const impactDialogVisible = shallowRef(false);
 const isLoading = shallowRef(false);
-const isApplying = shallowRef(false);
+const submissionMode = shallowRef<SubmissionMode>();
+const cutConfirmed = shallowRef(false);
+const editorReady = shallowRef(false);
 const errorMessage = shallowRef('');
+const refreshRequired = shallowRef(false);
+const focusedAnomalyId = shallowRef<string>();
 
 const capabilityAvailable = computed(() => (
   workspace.bootstrap.value?.capabilities['chapter-splitting'].available === true
 ));
-const coveragePercent = computed(() => {
-  const coverage = snapshot.value?.coverage;
-  if (!coverage || coverage.totalByteLength === 0)
-    return 0;
-  return Math.round(coverage.classifiedByteLength / coverage.totalByteLength * 100);
+const isSubmitting = computed(() => submissionMode.value !== undefined);
+const isApproved = computed(() => snapshot.value?.reviewStatus === 'approved');
+const bodyLoaded = computed(() => (
+  chapterDocument.status.value === 'loaded' && chapterDraft.draft.value !== undefined
+));
+const editorDisabled = computed(() => (
+  isLoading.value
+  || isSubmitting.value
+  || impactDialogVisible.value
+  || refreshRequired.value
+));
+const canConfirmCut = computed(() => Boolean(
+  snapshot.value
+  && bodyLoaded.value
+  && (!isApproved.value || chapterDraft.dirty.value)
+  && !refreshRequired.value
+  && !impactDialogVisible.value
+  && !isLoading.value
+  && !isSubmitting.value,
+));
+const canGoNext = computed(() => Boolean(
+  snapshot.value
+  && !isSubmitting.value
+  && !impactDialogVisible.value
+  && !refreshRequired.value
+  && bodyLoaded.value
+  && !chapterDraft.dirty.value
+  && chapterDraft.chapters.value.length > 0
+  && cutConfirmed.value,
+));
+const anomalyNavigationDisabled = computed(() => (
+  isSubmitting.value
+  || impactDialogVisible.value
+  || !editorReady.value
+  || chapterDraft.anomalies.value.length === 0
+));
+const footerStatus = computed(() => {
+  if (!snapshot.value)
+    return '正在读取章节快照';
+  if (chapterDocument.status.value === 'loading')
+    return '正在加载章节正文';
+  if (chapterDraft.dirty.value)
+    return '草稿尚未保存';
+  if (chapterDraft.unassignedRanges.value.length > 0)
+    return '仍有未归属正文';
+  if (isApproved.value)
+    return '阶段 01 已完成';
+  if (!cutConfirmed.value)
+    return '请确认章节切割';
+  return '章节切割已确认';
 });
 
-async function loadSnapshot(): Promise<void> {
-  if (isLoading.value)
-    return;
+watch(capabilityAvailable, (available) => {
+  if (available)
+    void loadSnapshot();
+}, { immediate: true });
 
+async function loadSnapshot(): Promise<void> {
+  if (isLoading.value || isSubmitting.value)
+    return;
   isLoading.value = true;
   errorMessage.value = '';
   const result = await window.voxweaver.novelImport.getReviewSnapshot();
-  isLoading.value = false;
   if (!result.ok) {
-    errorMessage.value = result.error.message;
+    isLoading.value = false;
+    setCommandError(result.error);
     return;
   }
-
-  snapshot.value = result.value;
-  selectedChapterIds.value = [];
-  textSlice.value = undefined;
+  await replaceSnapshot(result.value, result.value.reviewStatus === 'approved');
+  if (bodyLoaded.value)
+    refreshRequired.value = false;
+  isLoading.value = false;
 }
 
-async function applyCommand(command: NovelImportReviewCommandInput): Promise<void> {
-  isApplying.value = true;
-  errorMessage.value = '';
-  const result = await window.voxweaver.novelImport.applyReview(command);
-  isApplying.value = false;
-  if (!result.ok) {
-    errorMessage.value = result.error.message;
-    return;
-  }
-
-  snapshot.value = result.value;
+async function replaceSnapshot(
+  value: NovelImportReviewSnapshotDto,
+  confirmed: boolean,
+): Promise<void> {
+  snapshot.value = value;
   pendingCommand.value = undefined;
   stalePreview.value = undefined;
-  dialogVisible.value = false;
-  await workspace.ensureBootstrap(true);
+  impactDialogVisible.value = false;
+  focusedAnomalyId.value = undefined;
+  cutConfirmed.value = confirmed;
+  editorReady.value = false;
+  chapterDraft.clear();
+  chapterDocument.cancel();
+
+  await chapterDocument.load(value.revisionId, value.textByteLength);
+  if (chapterDocument.status.value !== 'loaded') {
+    errorMessage.value = chapterDocument.errorMessage.value || '章节正文加载失败。';
+    return;
+  }
+
+  try {
+    chapterDraft.reset(value, chapterDocument.text.value);
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error, '章节结构草稿初始化失败。');
+  }
 }
 
-async function previewCommand(command: NovelImportReviewCommandInput): Promise<void> {
-  isApplying.value = true;
+function handleDraftMutation(mutate: () => void): void {
+  if (editorDisabled.value || !bodyLoaded.value)
+    return;
+  try {
+    mutate();
+    cutConfirmed.value = false;
+    errorMessage.value = '';
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error, '章节结构操作失败。');
+  }
+}
+
+function handleBoundaryEdit(edit: ChapterBoundaryEdit): void {
+  handleDraftMutation(() => chapterDraft.applyChapterBoundaryEdit(edit));
+}
+
+function handleAcceptAnomaly(chapterId: string): void {
+  handleDraftMutation(() => chapterDraft.acceptChapterLengthAnomaly(chapterId));
+}
+
+function handleMergeChapter(chapterId: string, direction: ChapterMergeDirection): void {
+  handleDraftMutation(() => chapterDraft.mergeChapter(chapterId, direction));
+}
+
+function handleDeleteChapter(chapterId: string): void {
+  handleDraftMutation(() => chapterDraft.deleteChapterRecognition(chapterId));
+}
+
+function handleAddRecognition(characterOffset: number): void {
+  handleDraftMutation(() => chapterDraft.addChapterRecognition(characterOffset));
+}
+
+function handleInsertLineBreak(characterOffset: number): void {
+  handleDraftMutation(() => chapterDraft.insertLineBreak(characterOffset));
+}
+
+function navigateAnomaly(direction: -1 | 1): void {
+  const anomalies = chapterDraft.anomalies.value;
+  if (anomalies.length === 0)
+    return;
+  const currentIndex = anomalies.findIndex(anomaly => anomaly.chapterId === focusedAnomalyId.value);
+  const nextIndex = currentIndex < 0
+    ? (direction === 1 ? 0 : anomalies.length - 1)
+    : (currentIndex + direction + anomalies.length) % anomalies.length;
+  const anomaly = anomalies[nextIndex];
+  if (!anomaly)
+    return;
+  focusedAnomalyId.value = anomaly.chapterId;
+  chapterEditor.value?.focusChapter(anomaly.chapterId);
+}
+
+async function confirmChapterCut(): Promise<void> {
+  const command = chapterDraft.command.value;
+  if (!command || !canConfirmCut.value)
+    return;
+
+  submissionMode.value = 'save';
   errorMessage.value = '';
   const result = await window.voxweaver.novelImport.previewReview(command);
-  isApplying.value = false;
   if (!result.ok) {
-    errorMessage.value = result.error.message;
+    submissionMode.value = undefined;
+    setCommandError(result.error);
     return;
   }
 
   if (result.value.requiresConfirmation || result.value.affected.length > 0) {
     pendingCommand.value = command;
     stalePreview.value = result.value;
-    dialogVisible.value = true;
+    impactDialogVisible.value = true;
+    submissionMode.value = undefined;
+    return;
+  }
+  await applyStructureCommand(command);
+}
+
+async function applyStructureCommand(command: UpdateChapterStructureCommandInput): Promise<void> {
+  submissionMode.value = 'save';
+  errorMessage.value = '';
+  const result = await window.voxweaver.novelImport.applyReview(command);
+  if (!result.ok) {
+    submissionMode.value = undefined;
+    impactDialogVisible.value = false;
+    setCommandError(result.error);
     return;
   }
 
-  await applyCommand(command);
-}
-
-function decideProposal(proposalId: string, decision: 'approved' | 'rejected'): void {
-  if (!snapshot.value)
-    return;
-
-  void previewCommand({
-    commandType: 'decide-normalization-proposal',
-    baselineRevision: snapshot.value.baselineRevision,
-    proposalId,
-    decision,
-  });
-}
-
-function classifyUncoveredRange(
-  range: NovelImportReviewSnapshotDto['coverage']['uncoveredRanges'][number],
-  classification: 'front-matter' | 'noise',
-): void {
-  if (!snapshot.value)
-    return;
-
-  void previewCommand({
-    commandType: 'classify-uncovered-range',
-    baselineRevision: snapshot.value.baselineRevision,
-    range,
-    classification,
-  });
-}
-
-function rerunSelection(): void {
-  if (!snapshot.value || selectedChapterIds.value.length === 0)
-    return;
-
-  void previewCommand({
-    commandType: 'rerun-selection',
-    baselineRevision: snapshot.value.baselineRevision,
-    chapterIds: selectedChapterIds.value,
-  });
-}
-
-function openBoundaryEditor(
-  chapter: NovelImportReviewSnapshotDto['chapters'][number],
-): void {
-  boundaryChapterId.value = chapter.chapterId;
-  headingStartByte.value = chapter.headingRange.startByte;
-  headingEndByte.value = chapter.headingRange.endByte;
-  contentStartByte.value = chapter.contentRange.startByte;
-  contentEndByte.value = chapter.contentRange.endByte;
-  boundaryDialogVisible.value = true;
-}
-
-function previewBoundaryAdjustment(): void {
-  if (!snapshot.value || !boundaryChapterId.value)
-    return;
-
-  const values = [
-    headingStartByte.value,
-    headingEndByte.value,
-    contentStartByte.value,
-    contentEndByte.value,
-  ];
-  if (values.some(value => !Number.isSafeInteger(value) || value < 0)
-    || headingStartByte.value >= headingEndByte.value
-    || contentStartByte.value >= contentEndByte.value) {
-    errorMessage.value = '章节边界必须是非负整数，且每个结束位置必须大于开始位置。';
-    return;
-  }
-
-  boundaryDialogVisible.value = false;
-  void previewCommand({
-    commandType: 'adjust-chapter-boundary',
-    baselineRevision: snapshot.value.baselineRevision,
-    chapterId: boundaryChapterId.value,
-    headingRange: {
-      offsetUnit: 'utf8-byte',
-      startByte: headingStartByte.value,
-      endByte: headingEndByte.value,
-    },
-    contentRange: {
-      offsetUnit: 'utf8-byte',
-      startByte: contentStartByte.value,
-      endByte: contentEndByte.value,
-    },
-  });
-}
-
-function confirmReview(): void {
-  if (!snapshot.value)
-    return;
-
-  void previewCommand({
-    commandType: 'confirm-review',
-    baselineRevision: snapshot.value.baselineRevision,
-  });
+  await replaceSnapshot(result.value, true);
+  submissionMode.value = undefined;
 }
 
 function confirmPendingCommand(): void {
-  if (pendingCommand.value)
-    void applyCommand(pendingCommand.value);
+  const command = pendingCommand.value;
+  if (!command || isSubmitting.value)
+    return;
+  void applyStructureCommand(command);
 }
 
-async function loadChapterText(chapterId: string): Promise<void> {
-  const current = snapshot.value;
-  const chapter = current?.chapters.find(item => item.chapterId === chapterId);
-  if (!current || !chapter)
+function cancelPendingCommand(): void {
+  if (isSubmitting.value)
     return;
+  impactDialogVisible.value = false;
+  pendingCommand.value = undefined;
+  stalePreview.value = undefined;
+}
 
-  const startByte = chapter.contentRange.startByte;
-  const endByte = Math.min(
-    chapter.contentRange.endByte,
-    startByte + NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES,
-  );
-  const result = await window.voxweaver.novelImport.getTextSlice({
-    revisionId: current.revisionId,
-    startByte,
-    endByte,
-  });
-  if (!result.ok) {
-    errorMessage.value = result.error.message;
+async function goToProofreading(): Promise<void> {
+  const current = snapshot.value;
+  if (!current || !canGoNext.value)
+    return;
+  if (current.reviewStatus === 'approved') {
+    await router.push({ name: getProjectPageRouteName('proofreading') });
     return;
   }
-  textSlice.value = result.value;
+
+  const command = {
+    commandType: 'confirm-review',
+    baselineRevision: current.baselineRevision,
+  } as const;
+  submissionMode.value = 'next';
+  errorMessage.value = '';
+  const preview = await window.voxweaver.novelImport.previewReview(command);
+  if (!preview.ok) {
+    submissionMode.value = undefined;
+    setCommandError(preview.error);
+    return;
+  }
+  const applied = await window.voxweaver.novelImport.applyReview(command);
+  if (!applied.ok) {
+    submissionMode.value = undefined;
+    setCommandError(applied.error);
+    return;
+  }
+
+  snapshot.value = applied.value;
+  const refreshed = await workspace.ensureBootstrap(true);
+  submissionMode.value = undefined;
+  if (refreshed)
+    await router.push({ name: getProjectPageRouteName('proofreading') });
 }
 
-watch(capabilityAvailable, (available) => {
-  if (available)
-    void loadSnapshot();
-}, { immediate: true });
+function setCommandError(error: { readonly code: string; readonly message: string }): void {
+  errorMessage.value = error.message;
+  if (error.code === 'NOVEL_IMPORT_CONFLICT')
+    refreshRequired.value = true;
+}
+
+function toErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 </script>
 
 <template>
-  <article class="project-controller-page">
-    <WorkspacePageHeader
-      :description="page.description"
-      :stage-id="page.stageId"
-      :title="page.label"
-    >
-      <template #actions>
-        <ElButton :loading="isLoading" @click="loadSnapshot">刷新复核快照</ElButton>
-        <ElButton
-          :disabled="!snapshot || snapshot.reviewStatus === 'approved'"
-          :loading="isApplying"
-          type="primary"
-          @click="confirmReview"
-        >
-          确认阶段 01
-        </ElButton>
-      </template>
-    </WorkspacePageHeader>
-
+  <article class="chapter-splitting-page">
     <CapabilityGate page-key="chapter-splitting">
-      <div class="review-content">
-        <ElAlert
-          v-if="errorMessage"
-          :closable="false"
-          show-icon
-          :title="errorMessage"
-          type="error"
+      <div class="chapter-splitting-page__layout">
+        <section class="chapter-splitting-page__header-region">
+          <ChapterStructureHeader
+            :anomaly-count="chapterDraft.anomalies.value.length"
+            :chapter-count="chapterDraft.chapters.value.length"
+            :navigation-disabled="anomalyNavigationDisabled"
+            @next-anomaly="navigateAnomaly(1)"
+            @previous-anomaly="navigateAnomaly(-1)"
+          />
+          <div v-if="errorMessage" class="chapter-splitting-page__error">
+            <ElAlert
+              :closable="false"
+              show-icon
+              :title="errorMessage"
+              type="error"
+            />
+            <ElButton
+              v-if="refreshRequired"
+              data-testid="refresh-conflicted-chapter-draft"
+              :loading="isLoading"
+              type="primary"
+              @click="loadSnapshot"
+            >
+              刷新章节快照
+            </ElButton>
+          </div>
+        </section>
+
+        <main class="chapter-splitting-page__editor-region">
+          <ElSkeleton
+            v-if="isLoading || chapterDocument.status.value === 'loading'"
+            class="chapter-splitting-page__loading"
+            :rows="8"
+            animated
+          />
+          <ChapterCodeMirrorEditor
+            v-else-if="bodyLoaded"
+            ref="chapterEditor"
+            :anomalies="chapterDraft.anomalies.value"
+            :chapters="chapterDraft.chapters.value"
+            :disabled="editorDisabled"
+            :text="chapterDraft.text.value"
+            :unassigned-ranges="chapterDraft.unassignedRanges.value"
+            @accept-anomaly="handleAcceptAnomaly"
+            @add-recognition="handleAddRecognition"
+            @delete-chapter="handleDeleteChapter"
+            @error="errorMessage = $event"
+            @insert-line-break="handleInsertLineBreak"
+            @merge-chapter="handleMergeChapter"
+            @ready="editorReady = true"
+            @boundary-edit="handleBoundaryEdit"
+          />
+          <ElEmpty v-else description="章节正文尚未加载" />
+        </main>
+
+        <ChapterStructureFooter
+          :can-confirm="canConfirmCut"
+          :can-go-next="canGoNext"
+          :next-loading="submissionMode === 'next'"
+          :operation-count="chapterDraft.operationCount.value"
+          :save-loading="submissionMode === 'save'"
+          :status="footerStatus"
+          @confirm="confirmChapterCut"
+          @next="goToProofreading"
         />
-
-        <template v-if="snapshot">
-          <section class="review-summary-grid">
-            <article>
-              <span>章节</span>
-              <strong>{{ snapshot.chapters.length }}</strong>
-            </article>
-            <article>
-              <span>覆盖率</span>
-              <strong>{{ coveragePercent }}%</strong>
-            </article>
-            <article>
-              <span>未覆盖范围</span>
-              <strong>{{ snapshot.coverage.uncoveredRanges.length }}</strong>
-            </article>
-            <article>
-              <span>基线版本</span>
-              <strong>{{ snapshot.baselineRevision }}</strong>
-            </article>
-          </section>
-
-          <section class="review-panel">
-            <header><div><h2>章节候选</h2><p>候选标题、置信度和证据均来自当前 Core revision。</p></div></header>
-            <ElEmpty v-if="snapshot.candidates.length === 0" description="没有章节候选" />
-            <template v-else>
-              <div v-for="candidate in snapshot.candidates" :key="candidate.candidateId" class="candidate-row">
-                <div>
-                  <strong>{{ candidate.normalizedTitle }}</strong>
-                  <p>{{ candidate.rawTitle }} · byte {{ candidate.headingRange.startByte }}–{{ candidate.headingRange.endByte }}</p>
-                </div>
-                <span>{{ candidate.evidence.join('；') }}</span>
-                <ElTag effect="plain" size="small">
-                  {{ Math.round(candidate.confidence * 100) }}% · {{ candidate.reviewStatus }}
-                </ElTag>
-              </div>
-            </template>
-          </section>
-
-          <section class="review-panel">
-            <header>
-              <div><h2>章节与正文</h2><p>正文按 UTF-8 byte range 从 Core 分片读取。</p></div>
-              <ElButton
-                :disabled="selectedChapterIds.length === 0"
-                :loading="isApplying"
-                @click="rerunSelection"
-              >
-                局部重跑
-              </ElButton>
-            </header>
-            <ElCheckboxGroup v-model="selectedChapterIds" class="chapter-list">
-              <div v-for="chapter in snapshot.chapters" :key="chapter.chapterId" class="chapter-row">
-                <ElCheckbox :value="chapter.chapterId">
-                  {{ chapter.order }}. {{ chapter.title }}
-                </ElCheckbox>
-                <span>
-                  heading {{ chapter.headingRange.startByte }}–{{ chapter.headingRange.endByte }} ·
-                  content {{ chapter.contentRange.startByte }}–{{ chapter.contentRange.endByte }} ·
-                  {{ chapter.reviewStatus }}
-                </span>
-                <div class="chapter-actions">
-                  <ElButton link type="primary" @click="loadChapterText(chapter.chapterId)">读取正文</ElButton>
-                  <ElButton link type="primary" @click="openBoundaryEditor(chapter)">调整边界</ElButton>
-                </div>
-              </div>
-            </ElCheckboxGroup>
-            <pre v-if="textSlice" class="text-slice">{{ textSlice.text }}</pre>
-          </section>
-
-          <section class="review-panel">
-            <header><div><h2>覆盖范围</h2><p>未覆盖区间必须分类后才能确认阶段 01。</p></div></header>
-            <ElProgress :percentage="coveragePercent" />
-            <ElEmpty v-if="snapshot.coverage.uncoveredRanges.length === 0" description="正文已完整分类" />
-            <template v-else>
-              <div
-                v-for="range in snapshot.coverage.uncoveredRanges"
-                :key="`${range.startByte}:${range.endByte}`"
-                class="coverage-row"
-              >
-                <span>byte {{ range.startByte }}–{{ range.endByte }}</span>
-                <div>
-                  <ElButton size="small" @click="classifyUncoveredRange(range, 'front-matter')">标记为前置内容</ElButton>
-                  <ElButton size="small" @click="classifyUncoveredRange(range, 'noise')">标记为噪声</ElButton>
-                </div>
-              </div>
-            </template>
-          </section>
-
-          <section class="review-panel">
-            <header><div><h2>规范化提案</h2><p>每项决策先预览下游失效影响。</p></div></header>
-            <ElEmpty v-if="snapshot.normalizationProposals.length === 0" description="没有待处理提案" />
-            <template v-else>
-              <div
-                v-for="proposal in snapshot.normalizationProposals"
-                :key="proposal.proposalId"
-                class="proposal-row"
-              >
-                <div>
-                  <strong>{{ proposal.reason }}</strong>
-                  <p><del>{{ proposal.beforeText }}</del> → <ins>{{ proposal.afterText }}</ins></p>
-                </div>
-                <div v-if="proposal.decision === 'pending'" class="proposal-actions">
-                  <ElButton size="small" @click="decideProposal(proposal.proposalId, 'rejected')">拒绝</ElButton>
-                  <ElButton size="small" type="primary" @click="decideProposal(proposal.proposalId, 'approved')">接受</ElButton>
-                </div>
-                <ElTag v-else effect="plain">{{ proposal.decision }}</ElTag>
-              </div>
-            </template>
-          </section>
-
-          <section class="review-panel">
-            <header><div><h2>文本差异</h2><p>规范化后的 diff 由 Core 计算。</p></div></header>
-            <ElEmpty v-if="snapshot.diff.length === 0" description="当前 revision 没有文本差异" />
-            <template v-else>
-              <div v-for="hunk in snapshot.diff" :key="`${hunk.operation}:${hunk.range.startByte}`" class="diff-row">
-                <ElTag effect="plain" size="small">{{ hunk.operation }}</ElTag>
-                <span>byte {{ hunk.range.startByte }}–{{ hunk.range.endByte }}</span>
-                <p><del>{{ hunk.beforeText }}</del> → <ins>{{ hunk.afterText }}</ins></p>
-              </div>
-            </template>
-          </section>
-
-          <section class="review-panel">
-            <header><div><h2>Revision history</h2><p>仅展示 Core 返回的真实导入版本。</p></div></header>
-            <div v-for="revision in snapshot.revisionHistory" :key="revision.revisionId" class="revision-row">
-              <span>{{ revision.revisionId }}</span>
-              <span>baseline {{ revision.baselineRevision }}</span>
-              <ElTag :type="revision.active ? 'success' : 'info'" effect="plain" size="small">
-                {{ revision.active ? 'active' : revision.reviewStatus }}
-              </ElTag>
-            </div>
-          </section>
-        </template>
       </div>
     </CapabilityGate>
 
-    <ElDialog v-model="dialogVisible" title="确认应用复核操作" width="520px">
-      <p class="dialog-description">此操作基于 revision {{ stalePreview?.baselineRevision }}。</p>
+    <ElDialog
+      v-model="impactDialogVisible"
+      :close-on-click-modal="!isSubmitting"
+      :close-on-press-escape="!isSubmitting"
+      title="确认下游影响"
+      width="520px"
+      @closed="cancelPendingCommand"
+    >
+      <p class="chapter-splitting-page__dialog-description">
+        本次章节结构保存基于 revision {{ stalePreview?.baselineRevision }}。
+      </p>
       <ElAlert
-        v-if="stalePreview?.requiresConfirmation"
         :closable="false"
-        title="Core 要求明确确认下游失效影响。"
+        title="保存后下列下游产物将标记为 stale。"
         type="warning"
       />
-      <ul v-if="stalePreview?.affected.length" class="impact-list">
+      <ul v-if="stalePreview?.affected.length" class="chapter-splitting-page__impact-list">
         <li v-for="item in stalePreview.affected" :key="`${item.artifactType}:${item.artifactId}`">
           <strong>{{ item.artifactType }} · {{ item.artifactId }}</strong>
           <span>{{ item.reason }}</span>
         </li>
       </ul>
       <template #footer>
-        <ElButton @click="dialogVisible = false">取消</ElButton>
-        <ElButton :loading="isApplying" type="primary" @click="confirmPendingCommand">确认应用</ElButton>
-      </template>
-    </ElDialog>
-
-    <ElDialog v-model="boundaryDialogVisible" title="调整章节 byte 边界" width="520px">
-      <ElForm label-position="top">
-        <div class="boundary-grid">
-          <ElFormItem label="标题开始">
-            <ElInputNumber v-model="headingStartByte" :min="0" />
-          </ElFormItem>
-          <ElFormItem label="标题结束">
-            <ElInputNumber v-model="headingEndByte" :min="0" />
-          </ElFormItem>
-          <ElFormItem label="正文开始">
-            <ElInputNumber v-model="contentStartByte" :min="0" />
-          </ElFormItem>
-          <ElFormItem label="正文结束">
-            <ElInputNumber v-model="contentEndByte" :min="0" />
-          </ElFormItem>
-        </div>
-      </ElForm>
-      <template #footer>
-        <ElButton @click="boundaryDialogVisible = false">取消</ElButton>
-        <ElButton type="primary" @click="previewBoundaryAdjustment">预览影响</ElButton>
+        <ElButton :disabled="isSubmitting" @click="cancelPendingCommand">取消</ElButton>
+        <ElButton
+          :disabled="isSubmitting"
+          :loading="submissionMode === 'save'"
+          type="primary"
+          @click="confirmPendingCommand"
+        >
+          确认保存
+        </ElButton>
       </template>
     </ElDialog>
   </article>
 </template>
 
 <style scoped>
-.project-controller-page {
-  min-height: 100%;
-  background: #f7f8f6;
+.chapter-splitting-page {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #f6f7f5;
 }
 
-.review-content {
+.chapter-splitting-page__layout {
   display: grid;
-  gap: 16px;
-  padding: 24px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
-.review-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
-  gap: 10px;
-}
-
-.review-summary-grid article,
-.review-panel {
-  border: 1px solid #d9ddd7;
-  border-radius: 8px;
+.chapter-splitting-page__header-region {
+  z-index: 2;
+  min-width: 0;
   background: #fff;
 }
 
-.review-summary-grid article {
-  display: grid;
-  gap: 5px;
-  padding: 14px;
-}
-
-.review-summary-grid span,
-.review-panel header p {
-  color: #6a726e;
-  font-size: 11px;
-}
-
-.review-summary-grid strong {
-  font-size: 19px;
-}
-
-.review-panel {
-  padding: 16px;
-}
-
-.review-panel header,
-.candidate-row,
-.chapter-row,
-.coverage-row,
-.diff-row,
-.proposal-row,
-.revision-row {
+.chapter-splitting-page__error {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 10px;
+  padding: 8px 20px;
+  border-bottom: 1px solid #f0c8c8;
+  background: #fff;
 }
 
-.review-panel header {
-  margin-bottom: 12px;
-}
-
-.review-panel h2,
-.review-panel p {
-  margin: 0;
-}
-
-.review-panel h2 {
-  font-size: 15px;
-}
-
-.review-panel header p {
-  margin-top: 3px;
-}
-
-.chapter-list {
-  display: grid;
-  gap: 2px;
-}
-
-.chapter-row,
-.candidate-row,
-.coverage-row,
-.diff-row,
-.proposal-row,
-.revision-row {
-  min-height: 38px;
-  padding: 6px 8px;
-  border-top: 1px solid #eef0ed;
-  font-size: 12px;
-}
-
-.chapter-row > span,
-.candidate-row > span,
-.revision-row > span {
-  color: #6a726e;
-  font-size: 11px;
-}
-
-.chapter-row > span {
-  margin-left: auto;
-}
-
-.chapter-actions {
-  display: flex;
-  gap: 2px;
-}
-
-.candidate-row > div,
-.diff-row p {
+.chapter-splitting-page__error :deep(.el-alert) {
   min-width: 0;
   flex: 1;
 }
 
-.candidate-row p,
-.diff-row p {
-  margin: 3px 0 0;
-  color: #6a726e;
-  font-size: 11px;
-}
-
-.candidate-row > span {
-  max-width: 260px;
+.chapter-splitting-page__editor-region {
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: #fff;
 }
 
-.coverage-row > div {
-  display: flex;
-  gap: 6px;
+.chapter-splitting-page__editor-region :deep(.chapter-code-mirror-editor),
+.chapter-splitting-page__loading {
+  width: 100%;
+  height: 100%;
 }
 
-.diff-row {
-  justify-content: flex-start;
+.chapter-splitting-page__loading {
+  box-sizing: border-box;
+  padding: 20px;
 }
 
-.diff-row > span {
-  color: #6a726e;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.diff-row ins {
-  color: #286b56;
-}
-
-.text-slice {
-  max-height: 240px;
-  margin: 12px 0 0;
-  padding: 12px;
-  overflow: auto;
-  border: 1px solid #e3e6e2;
-  border-radius: 6px;
-  color: #414744;
-  background: #fafbf9;
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 20px;
-  white-space: pre-wrap;
-}
-
-.proposal-row p {
-  margin-top: 4px;
-  color: #6a726e;
-  font-size: 12px;
-}
-
-.proposal-row ins {
-  color: #286b56;
-}
-
-.proposal-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.dialog-description {
+.chapter-splitting-page__dialog-description {
   margin: 0 0 12px;
   color: #6a726e;
+  font-size: 12px;
 }
 
-.impact-list {
+.chapter-splitting-page__impact-list {
   display: grid;
   gap: 8px;
   margin: 14px 0 0;
@@ -623,7 +472,7 @@ watch(capabilityAvailable, (available) => {
   list-style: none;
 }
 
-.impact-list li {
+.chapter-splitting-page__impact-list li {
   display: grid;
   gap: 3px;
   padding: 9px;
@@ -633,23 +482,7 @@ watch(capabilityAvailable, (available) => {
   font-size: 12px;
 }
 
-.impact-list span {
+.chapter-splitting-page__impact-list span {
   color: #6a726e;
-}
-
-.boundary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 12px;
-}
-
-.boundary-grid :deep(.el-input-number) {
-  width: 100%;
-}
-
-@media (width <= 1100px) {
-  .review-summary-grid {
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
-  }
 }
 </style>

@@ -1,22 +1,19 @@
 import type {
-  ChapterCandidateDto,
   ChapterDto,
   CoverageReportDto,
   CoverageSegmentDto,
-  NormalizationProposalDto,
   Utf8TextRangeDto,
 } from '@voxweaver/contracts';
 
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
+import { detectChapterHeadingLine } from './chapterHeading.ts';
 
-export const CHAPTER_HEADING_MAX_CODE_POINTS = 120;
+export { CHAPTER_HEADING_MAX_CODE_POINTS } from './chapterHeading.ts';
 
 export interface NovelStructureAnalysis {
-  readonly candidates: readonly ChapterCandidateDto[];
   readonly chapters: readonly ChapterDto[];
   readonly coverage: CoverageReportDto;
-  readonly normalizationProposals: readonly NormalizationProposalDto[];
 }
 
 interface LineRecord {
@@ -27,9 +24,10 @@ interface LineRecord {
 }
 
 interface DetectedHeading {
-  readonly candidate: ChapterCandidateDto;
+  readonly headingRange: Utf8TextRangeDto;
   readonly lineStartByte: number;
   readonly lineEndByte: number;
+  readonly normalizedTitle: string;
 }
 
 export function analyzeNovelStructure(
@@ -38,9 +36,8 @@ export function analyzeNovelStructure(
 ): NovelStructureAnalysis {
   const textByteLength = Buffer.byteLength(text, 'utf8');
   const detected = scanLines(text)
-    .map(line => detectHeading(line, sourceHash))
+    .map(line => detectHeading(line))
     .filter((heading): heading is DetectedHeading => heading !== undefined);
-  const candidates = detected.map(heading => heading.candidate);
   const chapters = detected.map((heading, index): ChapterDto => {
     const next = detected[index + 1];
     const contentEndByte = next?.lineStartByte ?? textByteLength;
@@ -48,23 +45,23 @@ export function analyzeNovelStructure(
       chapterId: stableId(
         'chapter',
         sourceHash,
-        heading.candidate.headingRange.startByte,
-        heading.candidate.headingRange.endByte,
-        heading.candidate.normalizedTitle,
+        heading.headingRange.startByte,
+        heading.headingRange.endByte,
+        heading.normalizedTitle,
       ),
       order: index + 1,
-      title: heading.candidate.normalizedTitle,
-      headingRange: heading.candidate.headingRange,
+      title: heading.normalizedTitle,
+      headingKind: 'source',
+      headingRange: heading.headingRange,
       contentRange: range(heading.lineEndByte, contentEndByte),
       reviewStatus: 'pending',
+      lengthAnomalyAccepted: false,
     };
   });
 
   return {
-    candidates,
     chapters,
-    coverage: createCoverage(textByteLength, detected, chapters),
-    normalizationProposals: createNormalizationProposals(text, sourceHash),
+    coverage: createChapterCoverage(textByteLength, chapters),
   };
 }
 
@@ -105,78 +102,42 @@ function scanLines(text: string): LineRecord[] {
   return lines;
 }
 
-function detectHeading(
-  line: LineRecord,
-  sourceHash: string,
-): DetectedHeading | undefined {
-  const leadingWhitespace = line.body.match(/^\s*/u)?.[0] ?? '';
-  const trailingWhitespace = line.body.match(/\s*$/u)?.[0] ?? '';
-  const rawTitle = line.body.slice(
-    leadingWhitespace.length,
-    line.body.length - trailingWhitespace.length,
+function detectHeading(line: LineRecord): DetectedHeading | undefined {
+  const detected = detectChapterHeadingLine(line.body);
+  if (detected === undefined)
+    return undefined;
+
+  const startByte = line.startByte + Buffer.byteLength(
+    line.body.slice(0, detected.startCharacter),
+    'utf8',
   );
-  const codePointLength = [...rawTitle].length;
-  if (codePointLength === 0 || codePointLength > CHAPTER_HEADING_MAX_CODE_POINTS)
-    return undefined;
-
-  const headingKind = classifyHeading(rawTitle);
-  if (headingKind === undefined)
-    return undefined;
-
-  const startByte = line.startByte + Buffer.byteLength(leadingWhitespace, 'utf8');
-  const endByte = startByte + Buffer.byteLength(rawTitle, 'utf8');
-  const normalizedTitle = normalizeHeadingTitle(rawTitle);
+  const endByte = startByte + Buffer.byteLength(
+    line.body.slice(detected.startCharacter, detected.endCharacter),
+    'utf8',
+  );
   const headingRange = range(startByte, endByte);
   return {
+    headingRange,
     lineStartByte: line.startByte,
     lineEndByte: line.endByte,
-    candidate: {
-      candidateId: stableId(
-        'candidate',
-        sourceHash,
-        startByte,
-        endByte,
-        normalizedTitle,
-      ),
-      rawTitle,
-      normalizedTitle,
-      headingRange,
-      confidence: headingKind === 'numbered' ? 0.98 : 0.95,
-      evidence: ['standalone-line', `${headingKind}-heading-pattern`],
-      reviewStatus: 'pending',
-    },
+    normalizedTitle: detected.title,
   };
 }
 
-function classifyHeading(rawTitle: string): 'numbered' | 'special' | 'english' | undefined {
-  const titleStart = /^(?:第[^\s，。！？!?]{1,24}[章回节卷部篇集]|序章|序言|楔子|前言|引子|终章|尾声|后记|番外(?:\s*[0-9〇零一二三四五六七八九十百千万两]+)?|chapter\s+(?:\d+|[ivxlcdm]+))/iu.exec(rawTitle);
-  if (titleStart === null)
-    return undefined;
-  const suffix = rawTitle.slice(titleStart[0].length);
-  if (suffix.length > 0 && !isHeadingSuffix(suffix))
-    return undefined;
-
-  if (titleStart[0].startsWith('第'))
-    return 'numbered';
-  if (!titleStart[0].toLowerCase().startsWith('chapter'))
-    return 'special';
-  return 'english';
-}
-
-function isHeadingSuffix(suffix: string): boolean {
-  return /^[\s:：.．·\-—]/u.test(suffix);
-}
-
-function normalizeHeadingTitle(rawTitle: string): string {
-  return rawTitle.trim().replace(/[\t \u3000]+/gu, ' ');
-}
-
-function createCoverage(
+export function createChapterCoverage(
   totalByteLength: number,
-  headings: readonly DetectedHeading[],
   chapters: readonly ChapterDto[],
+  explicitUnassignedRanges?: readonly Utf8TextRangeDto[],
 ): CoverageReportDto {
-  if (headings.length === 0) {
+  if (explicitUnassignedRanges !== undefined) {
+    return createExplicitChapterCoverage(
+      totalByteLength,
+      chapters,
+      explicitUnassignedRanges,
+    );
+  }
+
+  if (chapters.length === 0) {
     const entireDocument = range(0, totalByteLength);
     return {
       totalByteLength,
@@ -189,22 +150,33 @@ function createCoverage(
   }
 
   const segments: CoverageSegmentDto[] = [];
-  const firstHeading = headings[0]!;
-  if (firstHeading.lineStartByte > 0) {
-    segments.push({
-      classification: 'front-matter',
-      range: range(0, firstHeading.lineStartByte),
-    });
+  const ordered = [...chapters].sort((left, right) => left.order - right.order);
+  let cursor = 0;
+  for (const chapter of ordered) {
+    const chapterStartByte = chapter.headingRange?.startByte ?? chapter.contentRange.startByte;
+    if (cursor < chapterStartByte) {
+      segments.push({
+        classification: 'chapter',
+        range: range(cursor, chapterStartByte),
+        chapterId: chapter.chapterId,
+        reason: 'uncovered-to-next',
+      });
+    }
+    if (chapterStartByte < chapter.contentRange.endByte) {
+      segments.push({
+        classification: 'chapter',
+        range: range(chapterStartByte, chapter.contentRange.endByte),
+        chapterId: chapter.chapterId,
+      });
+    }
+    cursor = chapter.contentRange.endByte;
   }
-  for (const [index, heading] of headings.entries()) {
-    const chapter = chapters[index]!;
+  if (cursor < totalByteLength) {
     segments.push({
       classification: 'chapter',
-      range: range(
-        heading.lineStartByte,
-        headings[index + 1]?.lineStartByte ?? totalByteLength,
-      ),
-      chapterId: chapter.chapterId,
+      range: range(cursor, totalByteLength),
+      chapterId: ordered.at(-1)!.chapterId,
+      reason: 'uncovered-to-last',
     });
   }
   return {
@@ -217,68 +189,76 @@ function createCoverage(
   };
 }
 
-function createNormalizationProposals(
-  text: string,
-  sourceHash: string,
-): NormalizationProposalDto[] {
-  const proposals: NormalizationProposalDto[] = [];
-  let characterOffset = 0;
-  let byteOffset = 0;
-  while (characterOffset < text.length) {
-    const codePoint = text.codePointAt(characterOffset)!;
-    const character = String.fromCodePoint(codePoint);
-    const characterLength = character.length;
-    const characterByteLength = Buffer.byteLength(character, 'utf8');
-
-    if (character === '\r') {
-      const isCrLf = text[characterOffset + 1] === '\n';
-      const beforeText = isCrLf ? '\r\n' : '\r';
-      const beforeByteLength = Buffer.byteLength(beforeText, 'utf8');
-      proposals.push(proposal(
-        sourceHash,
-        byteOffset,
-        byteOffset + beforeByteLength,
-        beforeText,
-        '\n',
-        '统一换行为 LF',
-      ));
-      characterOffset += beforeText.length;
-      byteOffset += beforeByteLength;
-      continue;
-    }
-
-    if (character === '\u00A0') {
-      proposals.push(proposal(
-        sourceHash,
-        byteOffset,
-        byteOffset + characterByteLength,
-        character,
-        ' ',
-        '将不换行空格替换为普通空格',
-      ));
-    }
-    characterOffset += characterLength;
-    byteOffset += characterByteLength;
-  }
-  return proposals;
+function createExplicitChapterCoverage(
+  totalByteLength: number,
+  chapters: readonly ChapterDto[],
+  explicitUnassignedRanges: readonly Utf8TextRangeDto[],
+): CoverageReportDto {
+  const orderedUnassignedRanges = [...explicitUnassignedRanges]
+    .sort((left, right) => left.startByte - right.startByte || left.endByte - right.endByte);
+  const inheritedChapterSegments = chapters.length === 0
+    ? []
+    : createChapterCoverage(totalByteLength, chapters).segments.filter(
+        segment => segment.classification === 'chapter',
+      );
+  const chapterSegments = inheritedChapterSegments.flatMap(segment => (
+    subtractRanges(segment, orderedUnassignedRanges)
+  ));
+  const unassignedSegments: CoverageSegmentDto[] = orderedUnassignedRanges.map(unassignedRange => ({
+    classification: 'unknown',
+    range: unassignedRange,
+  }));
+  const segments = [...chapterSegments, ...unassignedSegments]
+    .sort((left, right) => (
+      left.range.startByte - right.range.startByte
+      || left.range.endByte - right.range.endByte
+    ));
+  const classifiedByteLength = chapterSegments.reduce(
+    (total, segment) => total + segment.range.endByte - segment.range.startByte,
+    0,
+  );
+  const unclassifiedByteLength = orderedUnassignedRanges.reduce(
+    (total, unassignedRange) => total + unassignedRange.endByte - unassignedRange.startByte,
+    0,
+  );
+  return {
+    totalByteLength,
+    classifiedByteLength,
+    unclassifiedByteLength,
+    complete: classifiedByteLength === totalByteLength && unclassifiedByteLength === 0,
+    segments,
+    uncoveredRanges: orderedUnassignedRanges,
+  };
 }
 
-function proposal(
-  sourceHash: string,
-  startByte: number,
-  endByte: number,
-  beforeText: string,
-  afterText: string,
-  reason: string,
-): NormalizationProposalDto {
-  return {
-    proposalId: stableId('normalization', sourceHash, startByte, endByte, afterText),
-    range: range(startByte, endByte),
-    beforeText,
-    afterText,
-    reason,
-    decision: 'pending',
-  };
+function subtractRanges(
+  segment: CoverageSegmentDto,
+  excludedRanges: readonly Utf8TextRangeDto[],
+): CoverageSegmentDto[] {
+  const fragments: CoverageSegmentDto[] = [];
+  let cursor = segment.range.startByte;
+  for (const excludedRange of excludedRanges) {
+    if (excludedRange.endByte <= cursor)
+      continue;
+    if (excludedRange.startByte >= segment.range.endByte)
+      break;
+    if (cursor < excludedRange.startByte) {
+      fragments.push({
+        ...segment,
+        range: range(cursor, Math.min(excludedRange.startByte, segment.range.endByte)),
+      });
+    }
+    cursor = Math.max(cursor, excludedRange.endByte);
+    if (cursor >= segment.range.endByte)
+      break;
+  }
+  if (cursor < segment.range.endByte) {
+    fragments.push({
+      ...segment,
+      range: range(cursor, segment.range.endByte),
+    });
+  }
+  return fragments;
 }
 
 function stableId(

@@ -17,6 +17,8 @@ export type NovelImportErrorReason
     | 'source_asset_path_invalid'
     | 'source_asset_read_failed'
     | 'source_asset_symlink'
+    | 'source_preview_invalid_range'
+    | 'source_preview_too_large'
     | 'text_slice_invalid_range'
     | 'text_slice_too_large'
     | 'text_slice_utf8_boundary'

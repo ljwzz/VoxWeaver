@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "private": true,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./chapter-heading": "./src/chapterHeading.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.ts",

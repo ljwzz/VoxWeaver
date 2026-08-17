@@ -1,19 +1,17 @@
 import type {
-  ChapterCandidateDto,
   ChapterDto,
+  ChapterStructureProjectionDto,
   CoreEventEnvelope,
   CoreTrustedContext,
-  CoverageClassification,
-  CoverageReportDto,
-  CoverageSegmentDto,
   NovelImportEventDto,
   NovelImportReviewCommandInput,
   NovelImportReviewSnapshotDto,
+  SourceTextPreviewDto,
+  SourceTextPreviewRequest,
   StaleImpactItemDto,
   StalePreviewDto,
   StartNovelImportInput,
   TaskSummaryDto,
-  TextDiffHunkDto,
   TextSliceDto,
   TextSliceRequest,
   Utf8TextRangeDto,
@@ -36,22 +34,23 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { TextDecoder } from 'node:util';
 import {
   CORE_PROTOCOL_VERSION,
   isRecord,
   NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES,
   PROJECT_STATE_DATABASE_PATH,
+  TXT_SOURCE_ENCODINGS,
   VoxWeaverError,
 } from '@voxweaver/contracts';
 import {
-  analyzeNovelStructure,
+  createChapterCoverage,
   createNovelImportProcessorFingerprint,
   decodeUtf8TextSlice,
   importSourceAsset,
   NovelImportError,
   probeSourceAsset,
   readProjectSourceAsset,
+  readProjectSourcePreview,
 } from '@voxweaver/novel-import';
 
 const TASK_STAGE = 'importing';
@@ -107,10 +106,9 @@ interface AffectedArtifactRow {
   readonly selectorJson: string | null;
 }
 
-interface RerunSelectionResult {
-  readonly candidates: readonly ChapterCandidateDto[];
-  readonly chapters: readonly ChapterDto[];
-  readonly coverageSegments: readonly CoverageSegmentDto[];
+interface PreparedReviewText {
+  readonly insertedCanonicalText?: Buffer;
+  readonly textByteLength: number;
 }
 
 export interface NovelImportServiceOptions {
@@ -165,16 +163,14 @@ export class NovelImportService {
     const session = this.#sessions.requireSession(context);
     const source = await readProjectSourceAsset(session.rootPath, session.manifest.sourceAsset);
     const probe = probeSourceAsset(source);
-    if (input.sourceEncoding !== undefined) {
-      if (probe.encoding.status !== 'selection-required')
-        throw new VoxWeaverError('NOVEL_IMPORT_INVALID_SOURCE', '当前源资产不允许手动覆盖编码。', false);
-      if (!probe.encoding.allowedEncodings.includes(input.sourceEncoding))
-        throw invalidPayload('sourceEncoding');
-    } else if (probe.encoding.status === 'selection-required') {
-      throw new VoxWeaverError('NOVEL_IMPORT_ENCODING_REQUIRED', probe.encoding.message, false);
-    }
     if (probe.encoding.status === 'rejected')
       throw new VoxWeaverError('NOVEL_IMPORT_INVALID_SOURCE', probe.encoding.message, false);
+    if (input.sourceEncoding !== undefined
+      && !(TXT_SOURCE_ENCODINGS as readonly string[]).includes(input.sourceEncoding)) {
+      throw invalidPayload('sourceEncoding');
+    }
+    if (input.sourceEncoding === undefined && probe.encoding.status === 'selection-required')
+      throw new VoxWeaverError('NOVEL_IMPORT_ENCODING_REQUIRED', probe.encoding.message, false);
 
     const encoding = input.sourceEncoding
       ?? (probe.encoding.status === 'confirmed' ? probe.encoding.encoding : undefined);
@@ -221,6 +217,18 @@ export class NovelImportService {
 
     this.#scheduleTask(session, task.taskId, input);
     return task;
+  }
+
+  async getSourcePreview(
+    context: CoreTrustedContext,
+    input: SourceTextPreviewRequest,
+  ): Promise<SourceTextPreviewDto> {
+    const session = this.#sessions.requireSession(context);
+    return readProjectSourcePreview(
+      session.rootPath,
+      session.manifest.sourceAsset,
+      input,
+    );
   }
 
   getTask(context: CoreTrustedContext, taskId: string): TaskSummaryDto {
@@ -335,7 +343,8 @@ export class NovelImportService {
   ): Promise<StalePreviewDto> {
     const session = this.#sessions.requireSession(context);
     const initialRow = readCurrentRevisionForCommand(session, command);
-    await validateReviewByteBoundaries(session, initialRow, command);
+    await prepareReviewText(session, initialRow, command);
+    const commandHash = reviewCommandHash(command);
 
     const database = openProjectDatabase(session);
     try {
@@ -365,7 +374,7 @@ export class NovelImportService {
       `).run(
         randomUUID(),
         command.baselineRevision,
-        stableJson(command),
+        commandHash,
         JSON.stringify(preview),
         now.toISOString(),
         new Date(now.getTime() + 5 * 60 * 1_000).toISOString(),
@@ -386,11 +395,8 @@ export class NovelImportService {
   ): Promise<NovelImportReviewSnapshotDto> {
     const session = this.#sessions.requireSession(context);
     const initialRow = readCurrentRevisionForCommand(session, command);
-    await validateReviewByteBoundaries(session, initialRow, command);
-    const initialSnapshot = parseReviewSnapshot(initialRow.review_snapshot_json);
-    const rerunSelection = command.commandType === 'rerun-selection'
-      ? await prepareRerunSelection(session, initialRow, initialSnapshot, command)
-      : undefined;
+    const preparedText = await prepareReviewText(session, initialRow, command);
+    const commandHash = reviewCommandHash(command);
 
     const database = openProjectDatabase(session);
     const nextRevisionId = randomUUID();
@@ -427,7 +433,7 @@ export class NovelImportService {
         WHERE baseline_revision = ? AND command_hash = ?
           AND consumed_at IS NULL AND expires_at > ?
         ORDER BY created_at DESC LIMIT 1
-      `).get(command.baselineRevision, stableJson(command), now) as {
+      `).get(command.baselineRevision, commandHash, now) as {
         preview_id: string;
         preview_json: string;
       } | undefined;
@@ -444,7 +450,7 @@ export class NovelImportService {
       `).run(now, previewRecord.preview_id);
 
       const nextBaselineRevision = readNextBaseline(database);
-      const changed = applyReviewCommand(snapshot, command, rerunSelection);
+      const changed = applyReviewCommand(snapshot, command, preparedText.textByteLength);
       const updated = createReviewRevision(
         snapshot,
         changed,
@@ -461,6 +467,14 @@ export class NovelImportService {
       );
       await mkdir(temporaryDirectory, { recursive: true, mode: 0o700 });
       const temporarySnapshotPath = path.join(temporaryDirectory, 'review.json');
+      const temporaryTextPath = path.join(temporaryDirectory, 'text.utf8.txt');
+      if (preparedText.insertedCanonicalText) {
+        await writeFile(temporaryTextPath, preparedText.insertedCanonicalText, {
+          flag: 'wx',
+          mode: 0o600,
+        });
+        await syncFile(temporaryTextPath);
+      }
       await writeFile(temporarySnapshotPath, snapshotArtifactJson, {
         flag: 'wx',
         mode: 0o600,
@@ -469,6 +483,9 @@ export class NovelImportService {
       await mkdir(path.dirname(artifactDirectory), { recursive: true, mode: 0o700 });
       await rename(temporaryDirectory, artifactDirectory);
       artifactPublished = true;
+      const canonicalTextRelativePath = preparedText.insertedCanonicalText
+        ? path.posix.join(TASK_ARTIFACT_DIRECTORY, nextRevisionId, 'text.utf8.txt')
+        : row.canonical_text_path;
 
       database.prepare(`
         UPDATE novel_import_revision SET active = 0
@@ -490,7 +507,7 @@ export class NovelImportService {
         row.encoding_method,
         row.processor_version,
         row.raw_text_path,
-        row.canonical_text_path,
+        canonicalTextRelativePath,
         snapshotJson,
         updated.reviewStatus,
         now,
@@ -499,7 +516,6 @@ export class NovelImportService {
         UPDATE artifact_revision SET validity_status = 'superseded'
         WHERE revision_id = ? AND validity_status = 'current'
       `).run(snapshot.revisionId);
-      const commandHash = sha256Text(stableJson(command));
       database.prepare(`
         INSERT INTO artifact_revision (
           revision_id, artifact_id, artifact_type, lineage_id, storage_kind,
@@ -563,11 +579,11 @@ export class NovelImportService {
     } catch (error) {
       rollbackIgnoringErrors(database);
       if (artifactPublished)
-        await rm(artifactDirectory, { recursive: true, force: true });
+        await removeDirectoryIgnoringErrors(artifactDirectory);
       throw error;
     } finally {
-      database.close();
-      await rm(temporaryDirectory, { recursive: true, force: true });
+      closeDatabaseIgnoringErrors(database);
+      await removeDirectoryIgnoringErrors(temporaryDirectory);
     }
   }
 
@@ -620,7 +636,7 @@ export class NovelImportService {
         const now = this.#now().toISOString();
         progressDatabase.prepare(`
           UPDATE task SET progress_completed = 70,
-            progress_message = '已生成章节候选，准备发布产物', updated_at = ?
+            progress_message = '已完成章节分析，准备发布产物', updated_at = ?
           WHERE task_id = ? AND execution_status = 'running'
         `).run(now, taskId);
         this.#emitTaskEvent(session, 'task-progress', this.#readTask(progressDatabase, taskId));
@@ -881,11 +897,8 @@ function createReviewSnapshot(
     encoding: artifact.sourceEncoding,
     encodingMethod: artifact.encodingMethod,
     textByteLength: artifact.utf8Text.byteLength,
-    candidates: artifact.candidates,
     chapters: artifact.chapters,
     coverage: artifact.coverage,
-    normalizationProposals: artifact.normalizationProposals,
-    diff: [],
     revisionHistory: [
       ...previousHistory.map(revision => ({ ...revision, active: false })),
       {
@@ -907,81 +920,58 @@ function createReviewSnapshot(
 function applyReviewCommand(
   snapshot: NovelImportReviewSnapshotDto,
   command: NovelImportReviewCommandInput,
-  rerunSelection?: RerunSelectionResult,
+  textByteLength: number,
 ): NovelImportReviewSnapshotDto {
   switch (command.commandType) {
-    case 'adjust-chapter-boundary':
+    case 'adjust-chapter-boundaries': {
+      const chapters = projectChapterAdjustments(snapshot.chapters, command)
+        .map(chapter => ({ ...chapter, reviewStatus: 'pending' as const }));
       return {
         ...snapshot,
-        chapters: snapshot.chapters.map(chapter => chapter.chapterId === command.chapterId
-          ? { ...chapter, headingRange: command.headingRange, contentRange: command.contentRange }
-          : chapter),
-      };
-    case 'classify-uncovered-range':
-      return {
-        ...snapshot,
-        coverage: classifyCoverage(snapshot.coverage, command.range, command.classification),
-      };
-    case 'decide-normalization-proposal': {
-      const proposal = snapshot.normalizationProposals.find(item => item.proposalId === command.proposalId)!;
-      const proposals = snapshot.normalizationProposals.map(item => item.proposalId === command.proposalId
-        ? { ...item, decision: command.decision }
-        : item);
-      const diff: TextDiffHunkDto[] = command.decision === 'approved'
-        ? mergeDiff(snapshot.diff, {
-            operation: 'replace',
-            range: proposal.range,
-            beforeText: proposal.beforeText,
-            afterText: proposal.afterText,
-          })
-        : snapshot.diff.filter(hunk => hunk.range.startByte !== proposal.range.startByte
-          || hunk.range.endByte !== proposal.range.endByte);
-      return { ...snapshot, normalizationProposals: proposals, diff };
-    }
-    case 'rerun-selection': {
-      if (!rerunSelection)
-        throw new VoxWeaverError('NOVEL_IMPORT_REVIEW_REQUIRED', '局部重跑结果缺失。', false);
-      const selectedChapterIds = new Set(command.chapterIds);
-      const selectedHeadingRanges = snapshot.chapters
-        .filter(chapter => selectedChapterIds.has(chapter.chapterId))
-        .map(chapter => chapter.headingRange);
-      const chapters = [
-        ...snapshot.chapters.filter(chapter => !selectedChapterIds.has(chapter.chapterId)),
-        ...rerunSelection.chapters,
-      ]
-        .sort((left, right) => left.headingRange.startByte - right.headingRange.startByte)
-        .map((chapter, index) => ({ ...chapter, order: index + 1 }));
-      const candidates = [
-        ...snapshot.candidates.filter(candidate => !selectedHeadingRanges.some(range => (
-          rangesOverlap(range, candidate.headingRange)
-        ))),
-        ...rerunSelection.candidates,
-      ].sort((left, right) => left.headingRange.startByte - right.headingRange.startByte);
-      return {
-        ...snapshot,
-        candidates,
         chapters,
-        coverage: replaceChapterCoverage(
-          snapshot.coverage,
-          selectedChapterIds,
-          rerunSelection.coverageSegments,
+        coverage: createChapterCoverage(
+          snapshot.textByteLength,
+          chapters,
+          snapshot.coverage.uncoveredRanges,
         ),
         reviewStatus: 'pending',
       };
     }
+    case 'update-chapter-structure': {
+      const existingIds = new Set(snapshot.chapters.map(chapter => chapter.chapterId));
+      const chapters = command.chapters.map((chapter, index): ChapterDto => {
+        const chapterId = chapter.existingChapterId ?? createChapterId(existingIds);
+        existingIds.add(chapterId);
+        return {
+          chapterId,
+          order: index + 1,
+          title: chapter.headingKind === 'missing' ? '未命名章节' : chapter.title,
+          headingKind: chapter.headingKind,
+          ...(chapter.headingRange ? { headingRange: chapter.headingRange } : {}),
+          contentRange: chapter.contentRange,
+          reviewStatus: 'pending',
+          lengthAnomalyAccepted: chapter.lengthAnomalyAccepted,
+        };
+      });
+      return {
+        ...snapshot,
+        textByteLength,
+        chapters,
+        coverage: createChapterCoverage(textByteLength, chapters, command.unassignedRanges),
+        reviewStatus: 'pending',
+      };
+    }
     case 'confirm-review':
-      if (!snapshot.coverage.complete
-        || snapshot.coverage.uncoveredRanges.length > 0
-        || snapshot.normalizationProposals.some(proposal => proposal.decision === 'pending')) {
+      if (snapshot.chapters.length === 0) {
         throw new VoxWeaverError(
           'NOVEL_IMPORT_REVIEW_REQUIRED',
-          '必须先完成覆盖范围分类和规范化提案决策。',
+          '必须至少存在一个有效章节。',
           false,
         );
       }
+      assertValidChapterProjection(snapshot.chapters, snapshot.textByteLength);
       return {
         ...snapshot,
-        candidates: snapshot.candidates.map(candidate => ({ ...candidate, reviewStatus: 'approved' })),
         chapters: snapshot.chapters.map(chapter => ({ ...chapter, reviewStatus: 'approved' })),
         reviewStatus: 'approved',
       };
@@ -1031,94 +1021,276 @@ function toStaleImpactItems(
   return [...byRevision.values()];
 }
 
-function replaceChapterCoverage(
-  coverage: CoverageReportDto,
-  replacedChapterIds: ReadonlySet<string>,
-  replacementSegments: readonly CoverageSegmentDto[],
-): CoverageReportDto {
-  return {
-    ...coverage,
-    segments: [
-      ...coverage.segments.filter(segment => (
-        segment.classification !== 'chapter'
-        || !segment.chapterId
-        || !replacedChapterIds.has(segment.chapterId)
-      )),
-      ...replacementSegments,
-    ].sort((left, right) => left.range.startByte - right.range.startByte),
-  };
+function validateReviewCommand(
+  snapshot: NovelImportReviewSnapshotDto,
+  command: NovelImportReviewCommandInput,
+): void {
+  assertReviewCommandWhitelist(command);
+  switch (command.commandType) {
+    case 'adjust-chapter-boundaries': {
+      if (command.adjustments.length === 0)
+        throw invalidPayload('chapter adjustments');
+      const chapterIds = new Set(snapshot.chapters.map(chapter => chapter.chapterId));
+      const adjustedIds = new Set<string>();
+      for (const adjustment of command.adjustments) {
+        if (!chapterIds.has(adjustment.chapterId) || adjustedIds.has(adjustment.chapterId))
+          throw invalidPayload('chapter adjustments');
+        adjustedIds.add(adjustment.chapterId);
+      }
+      const projectedChapters = projectChapterAdjustments(snapshot.chapters, command);
+      assertValidChapterProjection(projectedChapters, snapshot.textByteLength);
+      assertStructureRangesCoverText(
+        projectedChapters,
+        snapshot.coverage.uncoveredRanges,
+        snapshot.textByteLength,
+      );
+      break;
+    }
+    case 'update-chapter-structure': {
+      const maximum = snapshot.textByteLength + command.insertionPoints.length;
+      const insertionPoints = new Set<number>();
+      for (const insertionPoint of command.insertionPoints) {
+        if (!Number.isSafeInteger(insertionPoint)
+          || insertionPoint < 0
+          || insertionPoint > snapshot.textByteLength
+          || insertionPoints.has(insertionPoint)) {
+          throw invalidPayload('chapter structure insertion point');
+        }
+        insertionPoints.add(insertionPoint);
+      }
+
+      const existingChapters = new Map(
+        snapshot.chapters.map(chapter => [chapter.chapterId, chapter]),
+      );
+      const projectedExistingIds = new Set<string>();
+      for (const chapter of command.chapters) {
+        if (chapter.existingChapterId !== undefined) {
+          const existing = existingChapters.get(chapter.existingChapterId);
+          if (!existing || projectedExistingIds.has(chapter.existingChapterId))
+            throw invalidPayload('chapter structure chapter ID');
+          if (existing.lengthAnomalyAccepted && !chapter.lengthAnomalyAccepted)
+            throw invalidPayload('chapter structure anomaly acceptance');
+          projectedExistingIds.add(chapter.existingChapterId);
+        }
+        assertValidStructureProjection(chapter, maximum);
+      }
+      assertStructureRangesCoverText(command.chapters, command.unassignedRanges, maximum);
+      break;
+    }
+    case 'confirm-review':
+      break;
+  }
+}
+
+function assertReviewCommandWhitelist(command: NovelImportReviewCommandInput): void {
+  if (!isRecord(command)
+    || !Number.isSafeInteger(command.baselineRevision)
+    || command.baselineRevision < 1
+    || typeof command.commandType !== 'string') {
+    throw invalidPayload('review command');
+  }
+  switch (command.commandType) {
+    case 'adjust-chapter-boundaries':
+      assertOnlyKeys(command, ['baselineRevision', 'commandType', 'adjustments']);
+      if (!Array.isArray(command.adjustments) || command.adjustments.length === 0)
+        throw invalidPayload('chapter adjustments');
+      for (const adjustment of command.adjustments) {
+        if (!isRecord(adjustment))
+          throw invalidPayload('chapter adjustment');
+        assertOnlyKeys(adjustment, ['chapterId', 'headingRange', 'contentRange']);
+        if (!isNonEmptyText(adjustment.chapterId))
+          throw invalidPayload('chapter adjustment ID');
+        assertRangeWhitelist(adjustment.headingRange);
+        assertRangeWhitelist(adjustment.contentRange);
+      }
+      break;
+    case 'update-chapter-structure':
+      assertOnlyKeys(command, [
+        'baselineRevision',
+        'commandType',
+        'insertionPoints',
+        'chapters',
+        'unassignedRanges',
+      ]);
+      if (!Array.isArray(command.insertionPoints)
+        || !Array.isArray(command.chapters)
+        || !Array.isArray(command.unassignedRanges)) {
+        throw invalidPayload('chapter structure');
+      }
+      for (const insertionPoint of command.insertionPoints) {
+        if (!Number.isSafeInteger(insertionPoint))
+          throw invalidPayload('chapter structure insertion point');
+      }
+      for (const chapter of command.chapters) {
+        if (!isRecord(chapter))
+          throw invalidPayload('chapter projection');
+        assertOnlyKeys(chapter, [
+          'existingChapterId',
+          'title',
+          'headingKind',
+          'headingRange',
+          'contentRange',
+          'lengthAnomalyAccepted',
+        ]);
+        const invalidExistingId = chapter.existingChapterId !== undefined
+          && !isNonEmptyText(chapter.existingChapterId);
+        if (invalidExistingId
+          || !isNonEmptyText(chapter.title)
+          || (chapter.headingKind !== 'source' && chapter.headingKind !== 'missing')
+          || typeof chapter.lengthAnomalyAccepted !== 'boolean'
+          || (chapter.headingKind === 'source' && chapter.headingRange === undefined)
+          || (chapter.headingKind === 'missing' && chapter.headingRange !== undefined)) {
+          throw invalidPayload('chapter projection');
+        }
+        if (chapter.headingRange !== undefined)
+          assertRangeWhitelist(chapter.headingRange);
+        assertRangeWhitelist(chapter.contentRange);
+      }
+      for (const range of command.unassignedRanges)
+        assertRangeWhitelist(range);
+      break;
+    case 'confirm-review':
+      assertOnlyKeys(command, ['baselineRevision', 'commandType']);
+      break;
+    default:
+      throw invalidPayload('review command type');
+  }
+}
+
+function assertOnlyKeys(value: Record<string, unknown>, allowedKeys: readonly string[]): void {
+  if (Object.keys(value).some(key => !allowedKeys.includes(key)))
+    throw invalidPayload('unexpected field');
+}
+
+function assertRangeWhitelist(value: unknown): void {
+  if (!isRecord(value))
+    throw invalidPayload('utf8 byte range');
+  assertOnlyKeys(value, ['offsetUnit', 'startByte', 'endByte']);
+  if (value.offsetUnit !== 'utf8-byte'
+    || !Number.isSafeInteger(value.startByte)
+    || !Number.isSafeInteger(value.endByte)) {
+    throw invalidPayload('utf8 byte range');
+  }
+}
+
+function projectChapterAdjustments(
+  chapters: readonly ChapterDto[],
+  command: Extract<NovelImportReviewCommandInput, { commandType: 'adjust-chapter-boundaries' }>,
+): ChapterDto[] {
+  const byChapterId = new Map(command.adjustments.map(adjustment => [adjustment.chapterId, adjustment]));
+  return chapters.map((chapter) => {
+    const adjustment = byChapterId.get(chapter.chapterId);
+    return adjustment
+      ? { ...chapter, headingRange: adjustment.headingRange, contentRange: adjustment.contentRange }
+      : chapter;
+  });
+}
+
+function assertValidChapterProjection(
+  chapters: readonly ChapterDto[],
+  maximum: number,
+): void {
+  const chapterIds = new Set<string>();
+  let previousEndByte = 0;
+  for (const [index, chapter] of chapters.entries()) {
+    if (chapter.order !== index + 1
+      || !isNonEmptyText(chapter.chapterId)
+      || chapterIds.has(chapter.chapterId)
+      || !isNonEmptyText(chapter.title)
+      || typeof chapter.lengthAnomalyAccepted !== 'boolean'
+      || (chapter.reviewStatus !== 'pending'
+        && chapter.reviewStatus !== 'approved'
+        && chapter.reviewStatus !== 'rejected')
+      || !isValidRange(chapter.contentRange, maximum, true)
+      || !isValidHeading(chapter.headingKind, chapter.headingRange, chapter.contentRange, maximum)) {
+      throw invalidPayload('chapter boundary');
+    }
+    if (chapter.headingKind === 'missing' && chapter.title !== '未命名章节')
+      throw invalidPayload('missing chapter title');
+    const startByte = chapter.headingRange?.startByte ?? chapter.contentRange.startByte;
+    if (startByte < previousEndByte)
+      throw invalidPayload('overlapping chapter boundary');
+    previousEndByte = chapter.contentRange.endByte;
+    chapterIds.add(chapter.chapterId);
+  }
+}
+
+function assertValidStructureProjection(
+  chapter: ChapterStructureProjectionDto,
+  maximum: number,
+): void {
+  if (!isNonEmptyText(chapter.title)
+    || typeof chapter.lengthAnomalyAccepted !== 'boolean'
+    || !isValidRange(chapter.contentRange, maximum, true)
+    || !isValidHeading(chapter.headingKind, chapter.headingRange, chapter.contentRange, maximum)
+    || (chapter.headingKind === 'missing' && chapter.title !== '未命名章节')) {
+    throw invalidPayload('chapter structure projection');
+  }
+}
+
+function assertStructureRangesCoverText(
+  chapters: readonly ChapterStructureProjectionDto[],
+  unassignedRanges: readonly Utf8TextRangeDto[],
+  maximum: number,
+): void {
+  const protectedRanges: Utf8TextRangeDto[] = [];
+  let previousChapterEnd = 0;
+  for (const chapter of chapters) {
+    const startByte = chapter.headingRange?.startByte ?? chapter.contentRange.startByte;
+    if (startByte < previousChapterEnd)
+      throw invalidPayload('chapter structure range order');
+    previousChapterEnd = chapter.contentRange.endByte;
+    if (chapter.headingRange)
+      protectedRanges.push(chapter.headingRange);
+    if (chapter.contentRange.startByte < chapter.contentRange.endByte)
+      protectedRanges.push(chapter.contentRange);
+  }
+
+  let previousUnassignedEnd = 0;
+  for (const range of unassignedRanges) {
+    if (!isValidRange(range, maximum, false) || range.startByte < previousUnassignedEnd)
+      throw invalidPayload('unassigned range');
+    if (protectedRanges.some(protectedRange => rangesOverlap(range, protectedRange)))
+      throw invalidPayload('unassigned chapter overlap');
+    previousUnassignedEnd = range.endByte;
+  }
+
+  if (chapters.length === 0) {
+    let cursor = 0;
+    for (const range of unassignedRanges) {
+      if (range.startByte !== cursor)
+        throw invalidPayload('chapter structure coverage');
+      cursor = range.endByte;
+    }
+    if (cursor !== maximum)
+      throw invalidPayload('chapter structure coverage');
+  }
 }
 
 function rangesOverlap(left: Utf8TextRangeDto, right: Utf8TextRangeDto): boolean {
   return left.startByte < right.endByte && right.startByte < left.endByte;
 }
 
-function classifyCoverage(
-  coverage: CoverageReportDto,
-  range: Utf8TextRangeDto,
-  classification: Exclude<CoverageClassification, 'chapter'>,
-): CoverageReportDto {
-  const remaining = coverage.uncoveredRanges.filter(item => !sameRange(item, range));
-  const classifiedByteLength = coverage.totalByteLength
-    - remaining.reduce((total, item) => total + item.endByte - item.startByte, 0);
-  return {
-    ...coverage,
-    segments: [...coverage.segments.filter(segment => !sameRange(segment.range, range)), { classification, range }],
-    uncoveredRanges: remaining,
-    classifiedByteLength,
-    unclassifiedByteLength: coverage.totalByteLength - classifiedByteLength,
-    complete: remaining.length === 0,
-  };
+function isValidHeading(
+  headingKind: unknown,
+  headingRange: Utf8TextRangeDto | undefined,
+  contentRange: Utf8TextRangeDto,
+  maximum: number,
+): boolean {
+  if (headingKind === 'missing')
+    return headingRange === undefined;
+  return headingKind === 'source'
+    && headingRange !== undefined
+    && isValidRange(headingRange, maximum, false)
+    && headingRange.endByte <= contentRange.startByte;
 }
 
-function validateReviewCommand(
-  snapshot: NovelImportReviewSnapshotDto,
-  command: NovelImportReviewCommandInput,
-): void {
-  switch (command.commandType) {
-    case 'adjust-chapter-boundary':
-      if (!snapshot.chapters.some(chapter => chapter.chapterId === command.chapterId)
-        || !isValidRange(command.headingRange, snapshot.textByteLength)
-        || !isValidRange(command.contentRange, snapshot.textByteLength)
-        || command.headingRange.endByte > command.contentRange.startByte) {
-        throw invalidPayload('chapter boundary');
-      }
-      assertNonOverlappingChapters(snapshot, command);
-      return;
-    case 'classify-uncovered-range':
-      if (!snapshot.coverage.uncoveredRanges.some(range => sameRange(range, command.range)))
-        throw invalidPayload('uncovered range');
-      return;
-    case 'decide-normalization-proposal':
-      if (!snapshot.normalizationProposals.some(proposal => proposal.proposalId === command.proposalId))
-        throw invalidPayload('proposalId');
-      return;
-    case 'rerun-selection':
-      if (command.chapterIds.length === 0
-        || command.chapterIds.some(id => !snapshot.chapters.some(chapter => chapter.chapterId === id))) {
-        throw invalidPayload('chapterIds');
-      }
-      break;
-
-    case 'confirm-review':
-      break;
-  }
-}
-
-function assertNonOverlappingChapters(
-  snapshot: NovelImportReviewSnapshotDto,
-  command: Extract<NovelImportReviewCommandInput, { commandType: 'adjust-chapter-boundary' }>,
-): void {
-  const chapters = [...snapshot.chapters
-    .map(chapter => chapter.chapterId === command.chapterId
-      ? { ...chapter, headingRange: command.headingRange, contentRange: command.contentRange }
-      : chapter)]
-    .sort((left, right) => left.order - right.order);
-  for (const [index, chapter] of chapters.entries()) {
-    const previous = chapters[index - 1];
-    if (previous && previous.contentRange.endByte > chapter.headingRange.startByte)
-      throw invalidPayload('overlapping chapter boundary');
-  }
+function createChapterId(reservedIds: ReadonlySet<string>): string {
+  let chapterId: string;
+  do {
+    chapterId = `chapter-${randomUUID()}`;
+  } while (reservedIds.has(chapterId));
+  return chapterId;
 }
 
 function openProjectDatabase(session: ProjectSession): DatabaseSync {
@@ -1204,7 +1376,7 @@ function parseStoredTaskInput(value: string): StartNovelImportInput {
     throw new VoxWeaverError('NOVEL_IMPORT_TASK_NOT_RETRYABLE', '任务参数损坏，无法重试。', false);
   if (parsed.sourceEncoding === null || parsed.sourceEncoding === undefined)
     return {};
-  if (!['gbk', 'gb18030', 'big5', 'utf-16le', 'utf-16be'].includes(String(parsed.sourceEncoding))) {
+  if (!(TXT_SOURCE_ENCODINGS as readonly string[]).includes(String(parsed.sourceEncoding))) {
     throw new VoxWeaverError('NOVEL_IMPORT_TASK_NOT_RETRYABLE', '任务编码参数损坏，无法重试。', false);
   }
   return {
@@ -1222,13 +1394,90 @@ function parseReviewSnapshot(value: string): NovelImportReviewSnapshotDto {
   if (!isRecord(parsed)
     || typeof parsed.revisionId !== 'string'
     || !Number.isSafeInteger(parsed.baselineRevision)
-    || !Array.isArray(parsed.candidates)
+    || !isRecord(parsed.source)
+    || typeof parsed.encoding !== 'string'
+    || typeof parsed.encodingMethod !== 'string'
+    || !Number.isSafeInteger(parsed.textByteLength)
     || !Array.isArray(parsed.chapters)
     || !isRecord(parsed.coverage)
-    || !Array.isArray(parsed.normalizationProposals)) {
+    || !Array.isArray(parsed.revisionHistory)
+    || (parsed.reviewStatus !== 'pending' && parsed.reviewStatus !== 'approved')
+    || typeof parsed.createdAt !== 'string') {
     throw new VoxWeaverError('PROJECT_DATABASE_INVALID', '小说导入复核快照损坏。', false);
   }
-  return parsed as unknown as NovelImportReviewSnapshotDto;
+  const textByteLength = parsed.textByteLength as number;
+  const chapters = parsed.chapters.map((chapter): ChapterDto => {
+    if (!isRecord(chapter)
+      || !isNonEmptyText(chapter.chapterId)
+      || !Number.isSafeInteger(chapter.order)
+      || !isNonEmptyText(chapter.title)
+      || (chapter.reviewStatus !== 'pending'
+        && chapter.reviewStatus !== 'approved'
+        && chapter.reviewStatus !== 'rejected')) {
+      throw invalidStoredReviewSnapshot();
+    }
+    const headingKind = chapter.headingKind === undefined ? 'source' : chapter.headingKind;
+    const lengthAnomalyAccepted = chapter.lengthAnomalyAccepted === undefined
+      ? false
+      : chapter.lengthAnomalyAccepted;
+    if ((headingKind !== 'source' && headingKind !== 'missing')
+      || typeof lengthAnomalyAccepted !== 'boolean') {
+      throw invalidStoredReviewSnapshot();
+    }
+    const headingRange = chapter.headingRange === undefined
+      ? undefined
+      : parseStoredRange(chapter.headingRange, textByteLength, false);
+    const contentRange = parseStoredRange(chapter.contentRange, textByteLength, true);
+    return {
+      chapterId: chapter.chapterId,
+      order: chapter.order as number,
+      title: chapter.title,
+      headingKind,
+      ...(headingRange ? { headingRange } : {}),
+      contentRange,
+      reviewStatus: chapter.reviewStatus,
+      lengthAnomalyAccepted,
+    };
+  });
+  try {
+    assertValidChapterProjection(chapters, textByteLength);
+  } catch {
+    throw invalidStoredReviewSnapshot();
+  }
+  return {
+    revisionId: parsed.revisionId,
+    baselineRevision: parsed.baselineRevision as number,
+    source: parsed.source as unknown as NovelImportReviewSnapshotDto['source'],
+    encoding: parsed.encoding as NovelImportReviewSnapshotDto['encoding'],
+    encodingMethod: parsed.encodingMethod as NovelImportReviewSnapshotDto['encodingMethod'],
+    textByteLength,
+    chapters,
+    coverage: parsed.coverage as unknown as NovelImportReviewSnapshotDto['coverage'],
+    revisionHistory: parsed.revisionHistory as unknown as NovelImportReviewSnapshotDto['revisionHistory'],
+    reviewStatus: parsed.reviewStatus,
+    createdAt: parsed.createdAt,
+  };
+}
+
+function parseStoredRange(
+  value: unknown,
+  maximum: number,
+  allowEmpty: boolean,
+): Utf8TextRangeDto {
+  if (!isRecord(value))
+    throw invalidStoredReviewSnapshot();
+  const range: Utf8TextRangeDto = {
+    offsetUnit: value.offsetUnit as 'utf8-byte',
+    startByte: value.startByte as number,
+    endByte: value.endByte as number,
+  };
+  if (!isValidRange(range, maximum, allowEmpty))
+    throw invalidStoredReviewSnapshot();
+  return range;
+}
+
+function invalidStoredReviewSnapshot(): VoxWeaverError {
+  return new VoxWeaverError('PROJECT_DATABASE_INVALID', '小说导入复核快照损坏。', false);
 }
 
 function assertCurrentBaseline(snapshot: NovelImportReviewSnapshotDto, baseline: number): void {
@@ -1254,6 +1503,7 @@ function readCurrentRevisionForCommand(
   session: ProjectSession,
   command: NovelImportReviewCommandInput,
 ): RevisionRow {
+  assertReviewCommandWhitelist(command);
   const database = openProjectDatabase(session);
   try {
     const row = readActiveRevision(database);
@@ -1268,132 +1518,112 @@ function readCurrentRevisionForCommand(
   }
 }
 
-async function validateReviewByteBoundaries(
+async function prepareReviewText(
   session: ProjectSession,
   row: RevisionRow,
   command: NovelImportReviewCommandInput,
-): Promise<void> {
-  if (command.commandType !== 'adjust-chapter-boundary')
-    return;
+): Promise<PreparedReviewText> {
+  const snapshot = parseReviewSnapshot(row.review_snapshot_json);
+  if (command.commandType === 'confirm-review')
+    return { textByteLength: snapshot.textByteLength };
+
   const handle = await openProjectArtifactFile(session.rootPath, row.canonical_text_path);
   try {
-    const stat = await handle.stat();
-    const offsets = [
-      command.headingRange.startByte,
-      command.headingRange.endByte,
-      command.contentRange.startByte,
-      command.contentRange.endByte,
-    ];
-    for (const offset of offsets) {
-      if (offset === 0 || offset === stat.size)
-        continue;
-      const byte = Buffer.allocUnsafe(1);
-      const { bytesRead } = await handle.read(byte, 0, 1, offset);
-      if (bytesRead !== 1 || (byte[0]! & 0xC0) === 0x80)
-        throw invalidPayload('chapter boundary UTF-8 offset');
-    }
-  } finally {
-    await handle.close();
-  }
-}
-
-async function prepareRerunSelection(
-  session: ProjectSession,
-  row: RevisionRow,
-  snapshot: NovelImportReviewSnapshotDto,
-  command: Extract<NovelImportReviewCommandInput, { commandType: 'rerun-selection' }>,
-): Promise<RerunSelectionResult> {
-  const selected = snapshot.chapters
-    .filter(chapter => command.chapterIds.includes(chapter.chapterId))
-    .sort((left, right) => left.order - right.order);
-  const candidates: ChapterCandidateDto[] = [];
-  const chapters: ChapterDto[] = [];
-  const coverageSegments: CoverageSegmentDto[] = [];
-
-  for (const selectedChapter of selected) {
-    const startByte = selectedChapter.headingRange.startByte;
-    const endByte = selectedChapter.contentRange.endByte;
-    const text = await readProjectArtifactUtf8Range(session, row, startByte, endByte);
-    const analysis = analyzeNovelStructure(
-      text,
-      `${snapshot.source.sha256}:${startByte}:${endByte}`,
-    );
-    if (analysis.chapters.length === 0) {
+    const before = await handle.stat();
+    if (!before.isFile() || before.size !== snapshot.textByteLength) {
       throw new VoxWeaverError(
-        'NOVEL_IMPORT_REVIEW_REQUIRED',
-        `局部重跑未在“${selectedChapter.title}”范围内检测到章节标题，请保留并人工调整边界。`,
+        'PROJECT_DATABASE_INVALID',
+        '小说导入复核快照与规范化文本长度不一致。',
         false,
       );
     }
 
-    const offsetCandidates = analysis.candidates.map(candidate => ({
-      ...candidate,
-      headingRange: offsetRange(candidate.headingRange, startByte),
-      reviewStatus: 'pending' as const,
-    }));
-    const offsetChapters = analysis.chapters.map(chapter => ({
-      ...chapter,
-      headingRange: offsetRange(chapter.headingRange, startByte),
-      contentRange: offsetRange(chapter.contentRange, startByte),
-      reviewStatus: 'pending' as const,
-    }));
-    candidates.push(...offsetCandidates);
-    chapters.push(...offsetChapters);
-
-    const existingSegment = snapshot.coverage.segments.find(segment => (
-      segment.classification === 'chapter'
-      && segment.chapterId === selectedChapter.chapterId
-    ));
-    let segmentStart = existingSegment?.range.startByte ?? startByte;
-    for (const [index, chapter] of offsetChapters.entries()) {
-      const segmentEnd = index === offsetChapters.length - 1
-        ? existingSegment?.range.endByte ?? endByte
-        : chapter.contentRange.endByte;
-      coverageSegments.push({
-        classification: 'chapter',
-        chapterId: chapter.chapterId,
-        range: {
-          offsetUnit: 'utf8-byte',
-          startByte: segmentStart,
-          endByte: segmentEnd,
-        },
-      });
-      segmentStart = segmentEnd;
+    if (command.commandType === 'adjust-chapter-boundaries') {
+      const offsets = new Set(command.adjustments.flatMap(adjustment => [
+        adjustment.headingRange.startByte,
+        adjustment.headingRange.endByte,
+        adjustment.contentRange.startByte,
+        adjustment.contentRange.endByte,
+      ]));
+      for (const offset of offsets) {
+        if (!await isArtifactUtf8Boundary(handle, offset, before.size))
+          throw invalidPayload('chapter boundary UTF-8 offset');
+      }
+      return { textByteLength: snapshot.textByteLength };
     }
-  }
 
-  return { candidates, chapters, coverageSegments };
-}
-
-async function readProjectArtifactUtf8Range(
-  session: ProjectSession,
-  row: RevisionRow,
-  startByte: number,
-  endByte: number,
-): Promise<string> {
-  if (!Number.isSafeInteger(startByte)
-    || !Number.isSafeInteger(endByte)
-    || startByte < 0
-    || endByte <= startByte) {
-    throw invalidPayload('local rerun range');
-  }
-  const handle = await openProjectArtifactFile(session.rootPath, row.canonical_text_path);
-  try {
-    const before = await handle.stat();
-    if (!before.isFile() || endByte > before.size)
-      throw invalidPayload('local rerun range');
-    const bytes = await readExactBytes(handle, endByte - startByte, startByte);
+    for (const insertionPoint of command.insertionPoints) {
+      if (!await isArtifactUtf8Boundary(handle, insertionPoint, before.size))
+        throw invalidPayload('line insertion UTF-8 offset');
+    }
+    const baselineBytes = await readExactBytes(handle, before.size, 0);
     const after = await handle.stat();
-    if (!sameFileStats(before, after))
-      throw new VoxWeaverError('PROJECT_DATABASE_INVALID', '局部重跑期间小说文本 artifact 发生变化。', false);
-    try {
-      return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-    } catch {
-      throw new VoxWeaverError('PROJECT_DATABASE_INVALID', '小说文本 artifact 不是有效 UTF-8。', false);
+    if (!sameFileStats(before, after)) {
+      throw new VoxWeaverError(
+        'PROJECT_DATABASE_INVALID',
+        '读取期间小说文本 artifact 发生变化。',
+        false,
+      );
     }
+    for (const insertionPoint of command.insertionPoints) {
+      if (isLineBreakByte(baselineBytes[insertionPoint - 1])
+        || isLineBreakByte(baselineBytes[insertionPoint])) {
+        throw invalidPayload('line insertion newline boundary');
+      }
+    }
+    const editedBytes = insertLineFeeds(baselineBytes, command.insertionPoints);
+    const finalOffsets = new Set<number>();
+    for (const chapter of command.chapters) {
+      if (chapter.headingRange) {
+        finalOffsets.add(chapter.headingRange.startByte);
+        finalOffsets.add(chapter.headingRange.endByte);
+      }
+      finalOffsets.add(chapter.contentRange.startByte);
+      finalOffsets.add(chapter.contentRange.endByte);
+    }
+    for (const range of command.unassignedRanges) {
+      finalOffsets.add(range.startByte);
+      finalOffsets.add(range.endByte);
+    }
+    for (const offset of finalOffsets) {
+      if (!isUtf8Boundary(editedBytes, offset))
+        throw invalidPayload('chapter structure UTF-8 offset');
+    }
+    return {
+      textByteLength: editedBytes.byteLength,
+      ...(command.insertionPoints.length > 0 ? { insertedCanonicalText: editedBytes } : {}),
+    };
   } finally {
     await handle.close();
   }
+}
+
+function isLineBreakByte(value: number | undefined): boolean {
+  return value === 0x0A || value === 0x0D;
+}
+
+function insertLineFeeds(baselineBytes: Buffer, insertionPoints: readonly number[]): Buffer {
+  if (insertionPoints.length === 0)
+    return baselineBytes;
+  const ordered = [...insertionPoints].sort((left, right) => left - right);
+  const edited = Buffer.allocUnsafe(baselineBytes.byteLength + ordered.length);
+  let sourceOffset = 0;
+  let targetOffset = 0;
+  for (const insertionPoint of ordered) {
+    targetOffset += baselineBytes.copy(edited, targetOffset, sourceOffset, insertionPoint);
+    edited[targetOffset] = 0x0A;
+    targetOffset += 1;
+    sourceOffset = insertionPoint;
+  }
+  baselineBytes.copy(edited, targetOffset, sourceOffset);
+  return edited;
+}
+
+function isUtf8Boundary(bytes: Uint8Array, offset: number): boolean {
+  return Number.isSafeInteger(offset)
+    && offset >= 0
+    && offset <= bytes.byteLength
+    && (offset === 0 || offset === bytes.byteLength || (bytes[offset]! & 0xC0) !== 0x80);
 }
 
 async function readProjectArtifactSlice(
@@ -1401,12 +1631,10 @@ async function readProjectArtifactSlice(
   row: RevisionRow,
   input: TextSliceRequest,
 ): Promise<TextSliceDto> {
-  const length = input.endByte - input.startByte;
   if (!Number.isSafeInteger(input.startByte)
     || !Number.isSafeInteger(input.endByte)
     || input.startByte < 0
-    || input.endByte < input.startByte
-    || length > NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES) {
+    || input.endByte < input.startByte) {
     throw invalidPayload('text slice range');
   }
 
@@ -1415,7 +1643,26 @@ async function readProjectArtifactSlice(
     const before = await handle.stat();
     if (!before.isFile() || input.endByte > before.size)
       throw invalidPayload('text slice range');
-    const bytes = await readExactBytes(handle, length, input.startByte);
+    if (!await isArtifactUtf8Boundary(handle, input.startByte, before.size)
+      || !await isArtifactUtf8Boundary(handle, input.endByte, before.size)) {
+      throw invalidPayload('text slice UTF-8 boundary');
+    }
+    let actualEndByte = Math.min(
+      input.endByte,
+      input.startByte + NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES,
+    );
+    while (actualEndByte > input.startByte
+      && !await isArtifactUtf8Boundary(handle, actualEndByte, before.size)) {
+      actualEndByte -= 1;
+    }
+    if (actualEndByte === input.startByte && input.endByte > input.startByte) {
+      throw new VoxWeaverError(
+        'PROJECT_DATABASE_INVALID',
+        '小说文本 artifact 无法在分片上限内找到 UTF-8 边界。',
+        false,
+      );
+    }
+    const bytes = await readExactBytes(handle, actualEndByte - input.startByte, input.startByte);
     const after = await handle.stat();
     if (!sameFileStats(before, after)) {
       throw new VoxWeaverError('PROJECT_DATABASE_INVALID', '读取期间小说文本 artifact 发生变化。', false);
@@ -1424,12 +1671,26 @@ async function readProjectArtifactSlice(
       revisionId: row.revision_id,
       sliceBytes: bytes,
       startByte: input.startByte,
-      endByte: input.endByte,
-      totalByteLength: before.size,
+      endByte: actualEndByte,
+      done: actualEndByte === input.endByte,
     });
   } finally {
     await handle.close();
   }
+}
+
+async function isArtifactUtf8Boundary(
+  handle: Awaited<ReturnType<typeof open>>,
+  offset: number,
+  totalByteLength: number,
+): Promise<boolean> {
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > totalByteLength)
+    return false;
+  if (offset === 0 || offset === totalByteLength)
+    return true;
+  const byte = Buffer.allocUnsafe(1);
+  const { bytesRead } = await handle.read(byte, 0, 1, offset);
+  return bytesRead === 1 && (byte[0]! & 0xC0) !== 0x80;
 }
 
 async function readExactBytes(
@@ -1458,14 +1719,6 @@ function sameFileStats(left: Stats, right: Stats): boolean {
     && left.ino === right.ino
     && left.size === right.size
     && left.mtimeMs === right.mtimeMs;
-}
-
-function offsetRange(range: Utf8TextRangeDto, offset: number): Utf8TextRangeDto {
-  return {
-    offsetUnit: 'utf8-byte',
-    startByte: range.startByte + offset,
-    endByte: range.endByte + offset,
-  };
 }
 
 async function openProjectArtifactFile(rootPath: string, relativePath: string) {
@@ -1532,28 +1785,25 @@ function sha256Text(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function sameRange(left: Utf8TextRangeDto, right: Utf8TextRangeDto): boolean {
-  return left.offsetUnit === 'utf8-byte'
-    && right.offsetUnit === 'utf8-byte'
-    && left.startByte === right.startByte
-    && left.endByte === right.endByte;
+function reviewCommandHash(command: NovelImportReviewCommandInput): string {
+  return sha256Text(stableJson(command));
 }
 
-function isValidRange(range: Utf8TextRangeDto, maximum: number): boolean {
+function isValidRange(
+  range: Utf8TextRangeDto,
+  maximum: number,
+  allowEmpty: boolean,
+): boolean {
   return range.offsetUnit === 'utf8-byte'
     && Number.isSafeInteger(range.startByte)
     && Number.isSafeInteger(range.endByte)
     && range.startByte >= 0
-    && range.endByte > range.startByte
+    && (allowEmpty ? range.endByte >= range.startByte : range.endByte > range.startByte)
     && range.endByte <= maximum;
 }
 
-function mergeDiff(
-  existing: readonly TextDiffHunkDto[],
-  next: TextDiffHunkDto,
-): TextDiffHunkDto[] {
-  return [...existing.filter(item => !sameRange(item.range, next.range)), next]
-    .sort((left, right) => left.range.startByte - right.range.startByte);
+function isNonEmptyText(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
 }
 
 function normalizeNovelImportError(error: unknown): { code: string; message: string } {
@@ -1571,6 +1821,22 @@ function rollbackIgnoringErrors(database: DatabaseSync): void {
     database.exec('ROLLBACK;');
   } catch {
     // No active transaction remains.
+  }
+}
+
+function closeDatabaseIgnoringErrors(database: DatabaseSync): void {
+  try {
+    database.close();
+  } catch {
+    // Cleanup must not replace the committed result or the original transaction error.
+  }
+}
+
+async function removeDirectoryIgnoringErrors(directoryPath: string): Promise<void> {
+  try {
+    await rm(directoryPath, { recursive: true, force: true });
+  } catch {
+    // Cleanup must not replace the committed result or the original transaction error.
   }
 }
 

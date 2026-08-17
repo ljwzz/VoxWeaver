@@ -1,8 +1,12 @@
 import type {
+  ChapterStructureProjectionDto,
   CoreRequestEnvelope,
   CoreResponseEnvelope,
   JsonValue,
   NovelImportReviewCommandInput,
+  SourceTextPreviewRequest,
+  StartNovelImportInput,
+  TxtSourceEncoding,
 } from '@voxweaver/contracts';
 import type { AppCoreService } from './appCoreService.ts';
 
@@ -13,7 +17,9 @@ import {
   isNonEmptyString,
   isRecord,
   isWorkspacePageKey,
+  NOVEL_IMPORT_SOURCE_PREVIEW_MAX_LINES,
   parseCoreRequestEnvelope,
+  TXT_SOURCE_ENCODINGS,
   VoxWeaverError,
 } from '@voxweaver/contracts';
 import { NovelImportError } from '@voxweaver/novel-import';
@@ -153,6 +159,11 @@ export class CoreRequestDispatcher {
       case CORE_METHODS.novelImportGetReviewSnapshot:
         requireEmptyPayload(request.payload);
         return this.#core.novelImport.getReviewSnapshot(request.trustedContext);
+      case CORE_METHODS.novelImportGetSourcePreview:
+        return this.#core.novelImport.getSourcePreview(
+          request.trustedContext,
+          parseSourcePreviewRequest(request.payload),
+        );
       case CORE_METHODS.novelImportGetTextSlice:
         return this.#core.novelImport.getTextSlice(
           request.trustedContext,
@@ -214,18 +225,46 @@ function invalidPayload(field: string): VoxWeaverError {
   return new VoxWeaverError('IPC_PAYLOAD_INVALID', `Core 请求字段无效：${field}。`, false);
 }
 
-function parseNovelImportStart(value: unknown) {
+function parseNovelImportStart(value: unknown): StartNovelImportInput {
   const payload = requireRecord(value);
   const sourceEncoding = payload.sourceEncoding;
-  const allowed = ['gbk', 'gb18030', 'big5', 'utf-16le', 'utf-16be'];
   if (Object.keys(payload).some(key => key !== 'sourceEncoding')
     || (sourceEncoding !== undefined
-      && (typeof sourceEncoding !== 'string' || !allowed.includes(sourceEncoding)))) {
+      && (typeof sourceEncoding !== 'string'
+        || !(TXT_SOURCE_ENCODINGS as readonly string[]).includes(sourceEncoding)))) {
     throw invalidPayload('sourceEncoding');
   }
   return sourceEncoding === undefined
     ? {}
-    : { sourceEncoding: sourceEncoding as 'gbk' | 'gb18030' | 'big5' | 'utf-16le' | 'utf-16be' };
+    : { sourceEncoding: sourceEncoding as TxtSourceEncoding };
+}
+
+function parseSourcePreviewRequest(value: unknown): SourceTextPreviewRequest {
+  const payload = requireRecord(value);
+  const hasUnexpectedField = Object.keys(payload).some(key => ![
+    'sourceHash',
+    'sourceEncoding',
+    'startByte',
+    'targetLineCount',
+  ].includes(key));
+  if (hasUnexpectedField
+    || typeof payload.sourceHash !== 'string'
+    || !/^[0-9a-f]{64}$/u.test(payload.sourceHash)
+    || typeof payload.sourceEncoding !== 'string'
+    || !(TXT_SOURCE_ENCODINGS as readonly string[]).includes(payload.sourceEncoding)
+    || !Number.isSafeInteger(payload.startByte)
+    || (payload.startByte as number) < 0
+    || !Number.isSafeInteger(payload.targetLineCount)
+    || (payload.targetLineCount as number) < 1
+    || (payload.targetLineCount as number) > NOVEL_IMPORT_SOURCE_PREVIEW_MAX_LINES) {
+    throw invalidPayload('source preview');
+  }
+  return {
+    sourceHash: payload.sourceHash,
+    sourceEncoding: payload.sourceEncoding as TxtSourceEncoding,
+    startByte: payload.startByte as number,
+    targetLineCount: payload.targetLineCount as number,
+  };
 }
 
 function parseTextSliceRequest(value: unknown) {
@@ -247,55 +286,87 @@ function parseReviewCommand(value: unknown): NovelImportReviewCommandInput {
   const payload = requireRecord(value);
   const baselineRevision = payload.baselineRevision;
   const commandType = payload.commandType;
-  if (!Number.isSafeInteger(baselineRevision) || !isNonEmptyString(commandType))
+  if (!Number.isSafeInteger(baselineRevision)
+    || (baselineRevision as number) < 1
+    || !isNonEmptyString(commandType)) {
     throw invalidPayload('review command');
+  }
 
   switch (commandType) {
-    case 'adjust-chapter-boundary':
-      requireOnlyKeys(payload, ['baselineRevision', 'commandType', 'chapterId', 'headingRange', 'contentRange']);
+    case 'adjust-chapter-boundaries': {
+      requireOnlyKeys(payload, ['baselineRevision', 'commandType', 'adjustments']);
+      if (!Array.isArray(payload.adjustments) || payload.adjustments.length === 0)
+        throw invalidPayload('chapter adjustments');
+      const adjustments = payload.adjustments.map((value) => {
+        const adjustment = requireRecord(value);
+        requireOnlyKeys(adjustment, ['chapterId', 'headingRange', 'contentRange']);
+        return {
+          chapterId: requireString(adjustment, 'chapterId'),
+          headingRange: parseUtf8Range(adjustment.headingRange),
+          contentRange: parseUtf8Range(adjustment.contentRange),
+        };
+      });
       return {
         commandType,
         baselineRevision: baselineRevision as number,
-        chapterId: requireString(payload, 'chapterId'),
-        headingRange: parseUtf8Range(payload.headingRange),
-        contentRange: parseUtf8Range(payload.contentRange),
-      };
-    case 'classify-uncovered-range': {
-      requireOnlyKeys(payload, ['baselineRevision', 'commandType', 'range', 'classification']);
-      const classification = payload.classification;
-      if (!['front-matter', 'appendix', 'noise', 'unknown'].includes(String(classification)))
-        throw invalidPayload('classification');
-      return {
-        commandType,
-        baselineRevision: baselineRevision as number,
-        range: parseUtf8Range(payload.range),
-        classification: classification as 'front-matter' | 'appendix' | 'noise' | 'unknown',
+        adjustments,
       };
     }
-    case 'decide-normalization-proposal': {
-      requireOnlyKeys(payload, ['baselineRevision', 'commandType', 'proposalId', 'decision']);
-      const decision = payload.decision;
-      if (decision !== 'approved' && decision !== 'rejected')
-        throw invalidPayload('decision');
-      return {
-        commandType,
-        baselineRevision: baselineRevision as number,
-        proposalId: requireString(payload, 'proposalId'),
-        decision,
-      };
-    }
-    case 'rerun-selection':
-      requireOnlyKeys(payload, ['baselineRevision', 'commandType', 'chapterIds']);
-      if (!Array.isArray(payload.chapterIds)
-        || payload.chapterIds.length === 0
-        || payload.chapterIds.some(value => !isNonEmptyString(value))) {
-        throw invalidPayload('chapterIds');
+    case 'update-chapter-structure': {
+      requireOnlyKeys(payload, [
+        'baselineRevision',
+        'commandType',
+        'insertionPoints',
+        'chapters',
+        'unassignedRanges',
+      ]);
+      if (!Array.isArray(payload.insertionPoints)
+        || !payload.insertionPoints.every(Number.isSafeInteger)
+        || !Array.isArray(payload.chapters)
+        || !Array.isArray(payload.unassignedRanges)) {
+        throw invalidPayload('chapter structure');
       }
+      const insertionPoints = payload.insertionPoints as number[];
+      if (new Set(insertionPoints).size !== insertionPoints.length)
+        throw invalidPayload('chapter structure insertion points');
+      const chapters = payload.chapters.map((value): ChapterStructureProjectionDto => {
+        const chapter = requireRecord(value);
+        requireOnlyKeys(chapter, [
+          'existingChapterId',
+          'title',
+          'headingKind',
+          'headingRange',
+          'contentRange',
+          'lengthAnomalyAccepted',
+        ]);
+        const existingChapterId = chapter.existingChapterId;
+        const headingKind = chapter.headingKind;
+        if ((existingChapterId !== undefined && !isNonEmptyString(existingChapterId))
+          || (headingKind !== 'source' && headingKind !== 'missing')
+          || typeof chapter.lengthAnomalyAccepted !== 'boolean'
+          || (headingKind === 'source' && chapter.headingRange === undefined)
+          || (headingKind === 'missing' && chapter.headingRange !== undefined)) {
+          throw invalidPayload('chapter projection');
+        }
+        return {
+          ...(existingChapterId === undefined ? {} : { existingChapterId }),
+          title: requireString(chapter, 'title'),
+          headingKind,
+          ...(headingKind === 'source'
+            ? { headingRange: parseUtf8Range(chapter.headingRange) }
+            : {}),
+          contentRange: parseUtf8Range(chapter.contentRange),
+          lengthAnomalyAccepted: chapter.lengthAnomalyAccepted,
+        };
+      });
       return {
         commandType,
         baselineRevision: baselineRevision as number,
-        chapterIds: payload.chapterIds as string[],
+        insertionPoints,
+        chapters,
+        unassignedRanges: payload.unassignedRanges.map(parseUtf8Range),
       };
+    }
     case 'confirm-review':
       requireOnlyKeys(payload, ['baselineRevision', 'commandType']);
       return { commandType, baselineRevision: baselineRevision as number };

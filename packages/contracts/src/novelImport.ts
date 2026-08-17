@@ -1,11 +1,14 @@
 import type { TaskSummaryDto } from './workspace.ts';
 
 export const NOVEL_IMPORT_PROCESSOR_ID = 'voxweaver.txt-import' as const;
-export const NOVEL_IMPORT_PROCESSOR_VERSION = '1' as const;
+export const NOVEL_IMPORT_PROCESSOR_VERSION = '2' as const;
+export const NOVEL_IMPORT_SOURCE_PREVIEW_MAX_BYTES = 256 * 1024;
+export const NOVEL_IMPORT_SOURCE_PREVIEW_MAX_LINES = 1_000;
 export const NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES = 256 * 1024;
 
 export const TXT_SOURCE_ENCODINGS = [
   'utf-8',
+  'gb2312',
   'gbk',
   'gb18030',
   'big5',
@@ -14,7 +17,7 @@ export const TXT_SOURCE_ENCODINGS = [
 ] as const;
 
 export type TxtSourceEncoding = typeof TXT_SOURCE_ENCODINGS[number];
-export type UserSelectedTxtSourceEncoding = Exclude<TxtSourceEncoding, 'utf-8'>;
+export type UserSelectedTxtSourceEncoding = TxtSourceEncoding;
 export type TxtEncodingDecisionMethod = 'bom' | 'strict-utf8' | 'user';
 
 export interface SourceAssetProbeDto {
@@ -34,6 +37,7 @@ export type NovelImportEncodingProbeDto
   | {
     readonly status: 'selection-required';
     readonly allowedEncodings: readonly UserSelectedTxtSourceEncoding[];
+    readonly recommendedEncoding?: UserSelectedTxtSourceEncoding;
     readonly sourceHash: string;
     readonly message: string;
   }
@@ -56,29 +60,40 @@ export interface StartNovelImportInput {
   readonly sourceEncoding?: UserSelectedTxtSourceEncoding;
 }
 
+export interface SourceTextPreviewRequest {
+  readonly sourceHash: string;
+  readonly sourceEncoding: TxtSourceEncoding;
+  readonly startByte: number;
+  readonly targetLineCount: number;
+}
+
+export interface SourceTextPreviewDto {
+  readonly sourceHash: string;
+  readonly sourceEncoding: TxtSourceEncoding;
+  readonly startByte: number;
+  readonly endByte: number;
+  readonly text: string;
+  readonly completeLineCount: number;
+  readonly done: boolean;
+}
+
 export interface Utf8TextRangeDto {
   readonly offsetUnit: 'utf8-byte';
   readonly startByte: number;
   readonly endByte: number;
 }
 
-export interface ChapterCandidateDto {
-  readonly candidateId: string;
-  readonly rawTitle: string;
-  readonly normalizedTitle: string;
-  readonly headingRange: Utf8TextRangeDto;
-  readonly confidence: number;
-  readonly evidence: readonly string[];
-  readonly reviewStatus: 'pending' | 'approved' | 'rejected';
-}
+export type ChapterHeadingKind = 'source' | 'missing';
 
 export interface ChapterDto {
   readonly chapterId: string;
   readonly order: number;
   readonly title: string;
-  readonly headingRange: Utf8TextRangeDto;
+  readonly headingKind: ChapterHeadingKind;
+  readonly headingRange?: Utf8TextRangeDto;
   readonly contentRange: Utf8TextRangeDto;
   readonly reviewStatus: 'pending' | 'approved' | 'rejected';
+  readonly lengthAnomalyAccepted: boolean;
 }
 
 export type CoverageClassification = 'front-matter' | 'chapter' | 'appendix' | 'noise' | 'unknown';
@@ -87,6 +102,7 @@ export interface CoverageSegmentDto {
   readonly classification: CoverageClassification;
   readonly range: Utf8TextRangeDto;
   readonly chapterId?: string;
+  readonly reason?: 'uncovered-to-last' | 'uncovered-to-next';
 }
 
 export interface CoverageReportDto {
@@ -96,22 +112,6 @@ export interface CoverageReportDto {
   readonly complete: boolean;
   readonly segments: readonly CoverageSegmentDto[];
   readonly uncoveredRanges: readonly Utf8TextRangeDto[];
-}
-
-export interface NormalizationProposalDto {
-  readonly proposalId: string;
-  readonly range: Utf8TextRangeDto;
-  readonly beforeText: string;
-  readonly afterText: string;
-  readonly reason: string;
-  readonly decision: 'pending' | 'approved' | 'rejected';
-}
-
-export interface TextDiffHunkDto {
-  readonly operation: 'delete' | 'insert' | 'replace';
-  readonly range: Utf8TextRangeDto;
-  readonly beforeText: string;
-  readonly afterText: string;
 }
 
 export interface NovelImportRevisionHistoryDto {
@@ -132,11 +132,8 @@ export interface NovelImportReviewSnapshotDto {
   readonly encoding: TxtSourceEncoding;
   readonly encodingMethod: TxtEncodingDecisionMethod;
   readonly textByteLength: number;
-  readonly candidates: readonly ChapterCandidateDto[];
   readonly chapters: readonly ChapterDto[];
   readonly coverage: CoverageReportDto;
-  readonly normalizationProposals: readonly NormalizationProposalDto[];
-  readonly diff: readonly TextDiffHunkDto[];
   readonly revisionHistory: readonly NovelImportRevisionHistoryDto[];
   readonly reviewStatus: 'pending' | 'approved';
   readonly createdAt: string;
@@ -152,34 +149,43 @@ export interface TextSliceDto {
   readonly revisionId: string;
   readonly range: Utf8TextRangeDto;
   readonly text: string;
-  readonly totalByteLength: number;
+  readonly done: boolean;
+}
+
+export interface ChapterBoundaryAdjustmentDto {
+  readonly chapterId: string;
+  readonly headingRange: Utf8TextRangeDto;
+  readonly contentRange: Utf8TextRangeDto;
+}
+
+export interface ChapterStructureProjectionDto {
+  readonly existingChapterId?: string;
+  readonly title: string;
+  readonly headingKind: ChapterHeadingKind;
+  readonly headingRange?: Utf8TextRangeDto;
+  readonly contentRange: Utf8TextRangeDto;
+  readonly lengthAnomalyAccepted: boolean;
 }
 
 interface NovelImportReviewCommandBase {
   readonly baselineRevision: number;
 }
 
+export interface UpdateChapterStructureCommandInput extends NovelImportReviewCommandBase {
+  readonly commandType: 'update-chapter-structure';
+  readonly insertionPoints: readonly number[];
+  readonly chapters: readonly ChapterStructureProjectionDto[];
+  readonly unassignedRanges: readonly Utf8TextRangeDto[];
+}
+
+export type UpdateChapterStructureCommand = UpdateChapterStructureCommandInput;
+
 export type NovelImportReviewCommandInput
   = | (NovelImportReviewCommandBase & {
-    readonly commandType: 'adjust-chapter-boundary';
-    readonly chapterId: string;
-    readonly headingRange: Utf8TextRangeDto;
-    readonly contentRange: Utf8TextRangeDto;
+    readonly commandType: 'adjust-chapter-boundaries';
+    readonly adjustments: readonly ChapterBoundaryAdjustmentDto[];
   })
-  | (NovelImportReviewCommandBase & {
-    readonly commandType: 'classify-uncovered-range';
-    readonly range: Utf8TextRangeDto;
-    readonly classification: Exclude<CoverageClassification, 'chapter'>;
-  })
-  | (NovelImportReviewCommandBase & {
-    readonly commandType: 'decide-normalization-proposal';
-    readonly proposalId: string;
-    readonly decision: 'approved' | 'rejected';
-  })
-  | (NovelImportReviewCommandBase & {
-    readonly commandType: 'rerun-selection';
-    readonly chapterIds: readonly string[];
-  })
+  | UpdateChapterStructureCommandInput
   | (NovelImportReviewCommandBase & {
     readonly commandType: 'confirm-review';
   });

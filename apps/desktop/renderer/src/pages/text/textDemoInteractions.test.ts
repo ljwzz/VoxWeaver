@@ -104,6 +104,7 @@ function createApi(): DesktopApi {
     },
     novelImport: {
       probe: vi.fn(),
+      getSourcePreview: vi.fn(),
       start: vi.fn(),
       getTask: vi.fn(),
       cancelTask: vi.fn(),

@@ -22,7 +22,7 @@ test('readUtf8TextSlice reads an exact multibyte UTF-8 byte range', () => {
     revisionId: 'revision-1',
     range: { offsetUnit: 'utf8-byte', startByte: 3, endByte: 7 },
     text: '😀',
-    totalByteLength: bytes.byteLength,
+    done: true,
   });
 });
 
@@ -48,7 +48,7 @@ test('readUtf8TextSlice rejects ranges that split a UTF-8 character', () => {
   );
 });
 
-test('readUtf8TextSlice enforces the 256 KiB maximum', () => {
+test('readUtf8TextSlice returns safe sequential chunks capped at 256 KiB', () => {
   const maximum = Buffer.alloc(NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES, 0x61);
   const accepted = readUtf8TextSlice({
     revisionId: 'revision-1',
@@ -57,17 +57,27 @@ test('readUtf8TextSlice enforces the 256 KiB maximum', () => {
     endByte: maximum.byteLength,
   });
   assert.equal(accepted.text.length, NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES);
+  assert.equal(accepted.done, true);
 
-  const tooLarge = Buffer.alloc(NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES + 1, 0x61);
-  assert.throws(
-    () => readUtf8TextSlice({
-      revisionId: 'revision-1',
-      textBytes: tooLarge,
-      startByte: 0,
-      endByte: tooLarge.byteLength,
-    }),
-    hasReason('text_slice_too_large'),
-  );
+  const bytes = Buffer.from(`${'a'.repeat(NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES - 1)}😀b`, 'utf8');
+  const first = readUtf8TextSlice({
+    revisionId: 'revision-1',
+    textBytes: bytes,
+    startByte: 0,
+    endByte: bytes.byteLength,
+  });
+  assert.equal(first.range.endByte, NOVEL_IMPORT_TEXT_SLICE_MAX_BYTES - 1);
+  assert.equal(first.done, false);
+  assert.doesNotMatch(first.text, /�/u);
+
+  const second = readUtf8TextSlice({
+    revisionId: 'revision-1',
+    textBytes: bytes,
+    startByte: first.range.endByte,
+    endByte: bytes.byteLength,
+  });
+  assert.equal(second.text, '😀b');
+  assert.equal(second.done, true);
 });
 
 test('readUtf8TextSlice validates ranges and UTF-8 content', () => {

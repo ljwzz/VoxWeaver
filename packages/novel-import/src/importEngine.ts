@@ -1,8 +1,6 @@
 import type {
-  ChapterCandidateDto,
   ChapterDto,
   CoverageReportDto,
-  NormalizationProposalDto,
   TxtEncodingDecisionMethod,
   TxtSourceEncoding,
 } from '@voxweaver/contracts';
@@ -24,6 +22,7 @@ import {
   sha256Bytes,
 } from './sourceAsset.ts';
 import { analyzeNovelStructure } from './structure.ts';
+import { normalizeImportedText } from './textNormalization.ts';
 
 export interface Utf8NovelTextArtifact {
   readonly encoding: 'utf-8';
@@ -45,10 +44,8 @@ export interface ImportedNovelArtifact {
   readonly processorVersion: typeof NOVEL_IMPORT_PROCESSOR_VERSION;
   readonly processorFingerprint: string;
   readonly utf8Text: Utf8NovelTextArtifact;
-  readonly candidates: readonly ChapterCandidateDto[];
   readonly chapters: readonly ChapterDto[];
   readonly coverage: CoverageReportDto;
-  readonly normalizationProposals: readonly NormalizationProposalDto[];
 }
 
 export function createNovelImportProcessorFingerprint(
@@ -71,8 +68,9 @@ export function importSourceAsset(
   selection?: ManualTxtEncodingSelection,
 ): ImportedNovelArtifact {
   const decoded = decodeSourceAsset(asset, selection);
-  const textBytes = Uint8Array.from(decoded.textBytes);
-  const structure = analyzeNovelStructure(decoded.text, decoded.sourceHash);
+  const normalizedText = normalizeImportedText(decoded.text);
+  const textBytes = Uint8Array.from(Buffer.from(normalizedText, 'utf8'));
+  const structure = analyzeNovelStructure(normalizedText, decoded.sourceHash);
   return {
     artifactType: 'novel-import',
     schemaVersion: 1,
@@ -89,7 +87,7 @@ export function importSourceAsset(
     utf8Text: {
       encoding: 'utf-8',
       mediaType: 'text/plain;charset=utf-8',
-      text: decoded.text,
+      text: normalizedText,
       bytes: textBytes,
       byteLength: textBytes.byteLength,
       sha256: sha256Bytes(textBytes),

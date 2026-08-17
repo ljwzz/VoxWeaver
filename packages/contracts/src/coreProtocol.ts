@@ -21,6 +21,7 @@ export const CORE_METHODS = Object.freeze({
   novelImportCancelTask: 'novelImport.cancelTask',
   novelImportRetryTask: 'novelImport.retryTask',
   novelImportGetReviewSnapshot: 'novelImport.getReviewSnapshot',
+  novelImportGetSourcePreview: 'novelImport.getSourcePreview',
   novelImportGetTextSlice: 'novelImport.getTextSlice',
   novelImportPreviewReview: 'novelImport.previewReview',
   novelImportApplyReview: 'novelImport.applyReview',

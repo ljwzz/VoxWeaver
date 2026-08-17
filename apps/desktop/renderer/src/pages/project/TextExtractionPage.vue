@@ -1,42 +1,59 @@
 <script setup lang="ts">
 import type {
+  NovelImportEventDto,
   NovelImportProbeDto,
   TaskSummaryDto,
-  UserSelectedTxtSourceEncoding,
+  TxtSourceEncoding,
 } from '@voxweaver/contracts';
 
+import { TXT_SOURCE_ENCODINGS } from '@voxweaver/contracts';
 import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import SourceTextPreview from '@/components/text-extraction/SourceTextPreview.vue';
+import TextExtractionActionBar from '@/components/text-extraction/TextExtractionActionBar.vue';
 import CapabilityGate from '@/components/workspace/CapabilityGate.vue';
-import WorkspacePageHeader from '@/components/workspace/WorkspacePageHeader.vue';
+import { useSourceTextPreview } from '@/composables/useSourceTextPreview';
 import { useWorkspaceContext } from '@/workspace/context';
-import { getProjectPageRouteName, getWorkspacePage } from '@/workspace/navigation';
+import { getProjectPageRouteName } from '@/workspace/navigation';
 
 type RequestState = 'error' | 'idle' | 'loading' | 'ready';
 
-const page = getWorkspacePage('text-extraction');
 const router = useRouter();
 const workspace = useWorkspaceContext();
+const preview = useSourceTextPreview();
 const requestState = shallowRef<RequestState>('idle');
 const probe = shallowRef<NovelImportProbeDto>();
 const task = shallowRef<TaskSummaryDto>();
-const selectedEncoding = shallowRef<UserSelectedTxtSourceEncoding>();
+const selectedEncoding = shallowRef<TxtSourceEncoding>();
 const errorMessage = shallowRef('');
 const runningAction = shallowRef<'cancel' | 'retry' | 'start'>();
+const dismissedCompletedRevision = shallowRef(false);
+const pendingReviewTaskId = shallowRef<string>();
+let ignoredTaskId: string | undefined;
 let unsubscribe: (() => void) | undefined;
 
 const capabilityAvailable = computed(() => (
   workspace.bootstrap.value?.capabilities['text-extraction'].available === true
 ));
-const encodingSelectionRequired = computed(() => probe.value?.encoding.status === 'selection-required');
-const canStart = computed(() => {
-  const encoding = probe.value?.encoding;
-  if (!encoding || task.value?.status === 'pending' || task.value?.status === 'running')
-    return false;
-  if (encoding.status === 'rejected')
-    return false;
-  return encoding.status === 'confirmed' || Boolean(selectedEncoding.value);
-});
+const taskRunning = computed(() => (
+  task.value?.status === 'pending' || task.value?.status === 'running'
+));
+const previewAvailable = computed(() => (
+  probe.value?.encoding.status !== 'rejected' && Boolean(probe.value && selectedEncoding.value)
+));
+const canConfirm = computed(() => (
+  previewAvailable.value
+  && preview.ready.value
+  && !taskRunning.value
+  && runningAction.value !== 'start'
+));
+const completedRevisionAvailable = computed(() => (
+  Boolean(probe.value?.latestReviewRevisionId) && !dismissedCompletedRevision.value
+));
+const encodingOptions = computed(() => TXT_SOURCE_ENCODINGS.map(value => ({
+  label: encodingLabel(value),
+  value,
+})));
 
 function formatBytes(byteLength: number): string {
   if (byteLength < 1024)
@@ -46,39 +63,108 @@ function formatBytes(byteLength: number): string {
   return `${(byteLength / 1024 / 1024).toFixed(1)} MiB`;
 }
 
-function encodingLabel(value: string): string {
-  return value.toUpperCase().replace('UTF-', 'UTF-');
+function encodingLabel(value: TxtSourceEncoding): string {
+  const labels: Record<TxtSourceEncoding, string> = {
+    'utf-8': 'UTF-8',
+    'utf-16le': 'UTF-16LE',
+    'utf-16be': 'UTF-16BE',
+    'gb2312': 'GB2312',
+    'gbk': 'GBK',
+    'gb18030': 'GB18030',
+    'big5': 'Big5',
+  };
+  const isDetectedBom = probe.value?.encoding.status === 'confirmed'
+    && probe.value.encoding.method === 'bom'
+    && probe.value.encoding.encoding === value;
+  return `${labels[value]}${isDetectedBom ? ' BOM' : ''}`;
+}
+
+function setProbeSelection(value: NovelImportProbeDto): void {
+  if (value.encoding.status === 'confirmed') {
+    selectedEncoding.value = value.encoding.encoding;
+    return;
+  }
+  if (value.encoding.status === 'selection-required') {
+    selectedEncoding.value = value.encoding.recommendedEncoding;
+    return;
+  }
+  selectedEncoding.value = undefined;
 }
 
 async function loadProbe(): Promise<void> {
   if (requestState.value === 'loading')
     return;
 
+  const previousSourceHash = probe.value?.source.sha256;
+  const previousEncoding = selectedEncoding.value;
   requestState.value = 'loading';
   errorMessage.value = '';
   const result = await window.voxweaver.novelImport.probe();
   if (!result.ok) {
     requestState.value = 'error';
     errorMessage.value = result.error.message;
+    probe.value = undefined;
+    task.value = undefined;
+    selectedEncoding.value = undefined;
+    preview.setSource();
     return;
   }
 
   probe.value = result.value;
   task.value = result.value.activeTask;
-  if (result.value.encoding.status === 'selection-required')
-    selectedEncoding.value = result.value.encoding.allowedEncodings[0];
+  pendingReviewTaskId.value = taskRunning.value ? task.value?.taskId : undefined;
+  dismissedCompletedRevision.value = false;
+  ignoredTaskId = undefined;
+  setProbeSelection(result.value);
+  if (previousSourceHash === result.value.source.sha256
+    && previousEncoding === selectedEncoding.value) {
+    preview.setSource(result.value.source.sha256, selectedEncoding.value);
+  }
   requestState.value = 'ready';
 }
 
-async function startImport(): Promise<void> {
-  if (!canStart.value)
+function onEncodingChanged(): void {
+  dismissedCompletedRevision.value = true;
+  pendingReviewTaskId.value = undefined;
+  if (task.value && !taskRunning.value) {
+    ignoredTaskId = task.value.taskId;
+    task.value = undefined;
+  }
+  errorMessage.value = '';
+}
+
+async function openReview(): Promise<void> {
+  await router.push({ name: getProjectPageRouteName('chapter-splitting') });
+}
+
+async function openReviewForSucceededTask(completedTask: TaskSummaryDto): Promise<void> {
+  if (completedTask.status !== 'succeeded'
+    || pendingReviewTaskId.value !== completedTask.taskId) {
+    return;
+  }
+
+  pendingReviewTaskId.value = undefined;
+  await workspace.ensureBootstrap(true);
+  await openReview();
+}
+
+async function proceedToReview(): Promise<void> {
+  if (task.value?.status === 'succeeded' || completedRevisionAvailable.value) {
+    await openReview();
+    return;
+  }
+
+  const currentProbe = probe.value;
+  const sourceEncoding = selectedEncoding.value;
+  if (!canConfirm.value || !currentProbe || !sourceEncoding)
     return;
 
   runningAction.value = 'start';
   errorMessage.value = '';
-  const sourceEncoding = encodingSelectionRequired.value ? selectedEncoding.value : undefined;
+  const keepAutomaticDetection = currentProbe.encoding.status === 'confirmed'
+    && currentProbe.encoding.encoding === sourceEncoding;
   const result = await window.voxweaver.novelImport.start(
-    sourceEncoding ? { sourceEncoding } : {},
+    keepAutomaticDetection ? {} : { sourceEncoding },
   );
   runningAction.value = undefined;
 
@@ -87,13 +173,17 @@ async function startImport(): Promise<void> {
     return;
   }
 
+  ignoredTaskId = undefined;
   task.value = result.value;
+  pendingReviewTaskId.value = result.value.taskId;
+  await openReviewForSucceededTask(result.value);
 }
 
 async function cancelTask(): Promise<void> {
   if (!task.value?.canCancel)
     return;
 
+  pendingReviewTaskId.value = undefined;
   runningAction.value = 'cancel';
   const result = await window.voxweaver.novelImport.cancelTask(task.value.taskId);
   runningAction.value = undefined;
@@ -116,16 +206,46 @@ async function retryTask(): Promise<void> {
     return;
   }
   task.value = result.value;
+  pendingReviewTaskId.value = result.value.taskId;
+  await openReviewForSucceededTask(result.value);
 }
 
-function openReview(): void {
-  void router.push({ name: getProjectPageRouteName('chapter-splitting') });
+async function handleNovelImportEvent(event: NovelImportEventDto): Promise<void> {
+  if (event.task.taskId === ignoredTaskId)
+    return;
+  if (task.value && event.task.taskId !== task.value.taskId)
+    return;
+
+  task.value = event.task;
+  if (event.eventType === 'task-completed') {
+    const shouldOpenReview = pendingReviewTaskId.value === event.task.taskId
+      && event.task.status === 'succeeded';
+    await workspace.ensureBootstrap(true);
+    if (shouldOpenReview) {
+      pendingReviewTaskId.value = undefined;
+      await openReview();
+    }
+    return;
+  }
+
+  if ((event.eventType === 'task-failed' || event.eventType === 'task-canceled')
+    && pendingReviewTaskId.value === event.task.taskId) {
+    pendingReviewTaskId.value = undefined;
+  }
 }
 
 watch(capabilityAvailable, (available) => {
   if (available)
     void loadProbe();
 }, { immediate: true });
+
+watch(
+  [() => probe.value?.source.sha256, selectedEncoding],
+  ([sourceHash, sourceEncoding]) => {
+    preview.setSource(sourceHash, sourceEncoding);
+  },
+  { flush: 'post' },
+);
 
 watch(
   () => workspace.coreHealth.value?.status,
@@ -137,11 +257,7 @@ watch(
 
 onMounted(() => {
   unsubscribe = window.voxweaver.novelImport.onEvent((event) => {
-    if (!task.value || event.task.taskId === task.value.taskId) {
-      task.value = event.task;
-      if (event.eventType === 'task-completed')
-        void workspace.ensureBootstrap(true);
-    }
+    void handleNovelImportEvent(event);
   });
 });
 
@@ -151,243 +267,108 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <article class="project-controller-page">
-    <WorkspacePageHeader
-      :description="page.description"
-      :stage-id="page.stageId"
-      :title="page.label"
-    >
-      <template #actions>
-        <ElButton :loading="requestState === 'loading'" @click="loadProbe">重新探测</ElButton>
-      </template>
-    </WorkspacePageHeader>
-
+  <article class="text-extraction-page">
     <CapabilityGate page-key="text-extraction">
-      <div class="controller-content">
-        <ElAlert
-          v-if="errorMessage"
-          :closable="false"
-          show-icon
-          :title="errorMessage"
-          type="error"
-        />
+      <div class="extraction-workspace">
+        <main class="preview-area">
+          <ElAlert
+            v-if="errorMessage"
+            :closable="false"
+            show-icon
+            :title="errorMessage"
+            type="error"
+          />
+          <ElAlert
+            v-if="probe?.encoding.status === 'selection-required' && !selectedEncoding"
+            :closable="false"
+            show-icon
+            :title="probe.encoding.message"
+            type="warning"
+          />
+          <ElAlert
+            v-else-if="probe?.encoding.status === 'rejected'"
+            :closable="false"
+            show-icon
+            :title="probe.encoding.message"
+            type="error"
+          />
 
-        <section v-if="probe" class="source-card">
-          <header>
-            <div>
-              <p>项目不可变 SourceAsset</p>
-              <h2>{{ probe.source.originalName }}</h2>
-            </div>
-            <ElTag effect="plain">TXT</ElTag>
-          </header>
-          <dl>
-            <div><dt>大小</dt><dd>{{ formatBytes(probe.source.byteLength) }}</dd></div>
-            <div><dt>SHA-256</dt><dd class="hash-value">{{ probe.source.sha256 }}</dd></div>
-          </dl>
-        </section>
-
-        <section v-if="probe?.encoding.status === 'confirmed'" class="encoding-card">
-          <div>
-            <p class="section-eyebrow">编码已确认</p>
-            <h2>{{ encodingLabel(probe.encoding.encoding) }}</h2>
-            <p>{{ probe.encoding.method === 'bom' ? '由 BOM 自动确认' : '通过严格 UTF-8 解码确认' }}</p>
+          <SourceTextPreview
+            v-if="previewAvailable"
+            :done="preview.done.value"
+            :error-message="preview.errorMessage.value"
+            :loading="preview.loading.value"
+            :reset-key="preview.generation.value"
+            :text="preview.text.value"
+            @request-lines="preview.loadMore"
+          />
+          <div v-else-if="requestState === 'loading'" class="empty-preview">
+            正在检测源文件编码…
           </div>
-          <ElTag type="success">可开始导入</ElTag>
-        </section>
-
-        <section v-else-if="probe?.encoding.status === 'selection-required'" class="encoding-card">
-          <div class="encoding-selection">
-            <p class="section-eyebrow">需要手动选择编码</p>
-            <h2>自动检测无法安全确认编码</h2>
-            <p>{{ probe.encoding.message }}</p>
-            <ElSelect v-model="selectedEncoding" aria-label="源文本编码" placeholder="选择编码">
-              <ElOption
-                v-for="encoding in probe.encoding.allowedEncodings"
-                :key="encoding"
-                :label="encodingLabel(encoding)"
-                :value="encoding"
-              />
-            </ElSelect>
+          <div v-else-if="probe?.encoding.status !== 'rejected'" class="empty-preview">
+            选择源文本编码后将显示正文预览。
           </div>
-          <ElTag type="warning">绑定当前源哈希</ElTag>
-        </section>
+        </main>
 
-        <ElAlert
-          v-else-if="probe?.encoding.status === 'rejected'"
-          :closable="false"
-          show-icon
-          :title="probe.encoding.message"
-          type="error"
+        <TextExtractionActionBar
+          v-model:encoding="selectedEncoding"
+          :can-confirm="canConfirm"
+          :encoding-options="probe ? encodingOptions : []"
+          :error-message="preview.errorMessage.value || errorMessage"
+          :has-completed-revision="completedRevisionAvailable"
+          :probe-loading="requestState === 'loading'"
+          :running-action="runningAction"
+          :source-name="probe?.source.originalName"
+          :source-size="probe ? formatBytes(probe.source.byteLength) : undefined"
+          :task="task"
+          @cancel="cancelTask"
+          @encoding-changed="onEncodingChanged"
+          @proceed="proceedToReview"
+          @redetect="loadProbe"
+          @retry="retryTask"
         />
-
-        <section v-if="task" class="task-detail-card" aria-label="导入任务">
-          <header>
-            <div>
-              <p class="section-eyebrow">导入任务</p>
-              <h2>{{ task.progress.message }}</h2>
-            </div>
-            <ElTag effect="plain">{{ task.status }}</ElTag>
-          </header>
-          <ElProgress :percentage="task.progress.percent" />
-          <p v-if="task.errorMessage" class="task-error" role="alert">{{ task.errorMessage }}</p>
-          <footer>
-            <ElButton
-              v-if="task.canCancel"
-              :loading="runningAction === 'cancel'"
-              @click="cancelTask"
-            >
-              取消任务
-            </ElButton>
-            <ElButton
-              v-if="task.canRetry"
-              :loading="runningAction === 'retry'"
-              type="primary"
-              @click="retryTask"
-            >
-              重试任务
-            </ElButton>
-            <ElButton v-if="task.status === 'succeeded'" type="primary" @click="openReview">
-              进入章节复核
-            </ElButton>
-          </footer>
-        </section>
-
-        <div v-if="probe && !task" class="controller-actions">
-          <p>导入读取项目内源资产，不会再次选择或改写外部文件。</p>
-          <ElButton
-            :disabled="!canStart"
-            :loading="runningAction === 'start'"
-            type="primary"
-            @click="startImport"
-          >
-            开始文本提取
-          </ElButton>
-        </div>
       </div>
     </CapabilityGate>
   </article>
 </template>
 
 <style scoped>
-.project-controller-page {
-  min-height: 100%;
-  background: #f7f8f6;
-}
-
-.controller-content {
-  display: grid;
-  max-width: 920px;
-  gap: 16px;
-  padding: 24px;
-}
-
-.source-card,
-.encoding-card,
-.task-detail-card {
-  padding: 18px;
-  border: 1px solid #d9ddd7;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.source-card header,
-.encoding-card,
-.task-detail-card header,
-.task-detail-card footer,
-.controller-actions {
+.text-extraction-page {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.source-card p,
-.source-card h2,
-.encoding-card p,
-.encoding-card h2,
-.task-detail-card p,
-.task-detail-card h2,
-.controller-actions p {
-  margin: 0;
-}
-
-.source-card h2,
-.encoding-card h2,
-.task-detail-card h2 {
-  margin-top: 4px;
-  font-size: 16px;
-  line-height: 24px;
-}
-
-.source-card dl {
-  display: grid;
-  gap: 8px;
-  margin: 16px 0 0;
-}
-
-.source-card dl > div {
-  display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
-  gap: 12px;
-  color: #6a726e;
-  font-size: 12px;
-}
-
-.source-card dd {
-  min-width: 0;
-  margin: 0;
-  color: #202522;
-}
-
-.hash-value {
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  background: #f7f8f6;
   overflow: hidden;
-  font-family: ui-monospace, monospace;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.section-eyebrow {
-  color: #6a726e;
-  font-size: 11px;
+.extraction-workspace {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.encoding-card p:last-child {
-  margin-top: 5px;
-  color: #6a726e;
-  font-size: 12px;
+.preview-area {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 24px;
+  overflow: hidden;
 }
 
-.encoding-selection {
+.empty-preview {
   display: grid;
-  min-width: 0;
-  gap: 8px;
-}
-
-.encoding-selection .el-select {
-  width: 240px;
-  margin-top: 4px;
-}
-
-.task-detail-card {
-  display: grid;
-  gap: 16px;
-}
-
-.task-detail-card footer {
-  justify-content: flex-end;
-}
-
-.task-error {
-  color: #b34444;
-  font-size: 12px;
-}
-
-.controller-actions {
-  justify-content: flex-end;
-}
-
-.controller-actions p {
+  min-height: 0;
+  flex: 1;
+  place-items: center;
+  border: 1px dashed #cbd0ca;
+  border-radius: 8px;
   color: #6a726e;
-  font-size: 12px;
+  background: #fff;
+  font-size: 13px;
 }
 </style>

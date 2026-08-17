@@ -10,6 +10,7 @@ import type {
   NovelImportReviewCommandInput,
   ProjectOpenOutcomeDto,
   ProjectSummaryDto,
+  SourceTextPreviewRequest,
   StartNovelImportInput,
   TextSliceRequest,
   WorkspacePageKey,
@@ -679,6 +680,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.novelImportCancelTask, (event, taskId: string) => invokeProject(event, CORE_METHODS.novelImportCancelTask, { taskId }));
   ipcMain.handle(IPC_CHANNELS.novelImportRetryTask, (event, taskId: string) => invokeProject(event, CORE_METHODS.novelImportRetryTask, { taskId }));
   ipcMain.handle(IPC_CHANNELS.novelImportGetReviewSnapshot, event => invokeProject(event, CORE_METHODS.novelImportGetReviewSnapshot, {}));
+  ipcMain.handle(IPC_CHANNELS.novelImportGetSourcePreview, (event, input: SourceTextPreviewRequest) => invokeProject(event, CORE_METHODS.novelImportGetSourcePreview, input));
   ipcMain.handle(IPC_CHANNELS.novelImportGetTextSlice, (event, input: TextSliceRequest) => invokeProject(event, CORE_METHODS.novelImportGetTextSlice, input));
   ipcMain.handle(IPC_CHANNELS.novelImportPreviewReview, (event, command: NovelImportReviewCommandInput) => invokeProject(event, CORE_METHODS.novelImportPreviewReview, command));
   ipcMain.handle(IPC_CHANNELS.novelImportApplyReview, (event, command: NovelImportReviewCommandInput) => invokeProject(event, CORE_METHODS.novelImportApplyReview, command));

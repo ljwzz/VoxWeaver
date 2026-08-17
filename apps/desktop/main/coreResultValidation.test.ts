@@ -37,10 +37,42 @@ describe('core method result validation', () => {
       taskId: 'task-1',
       status: 'running',
     })).toThrowError(/无效结果/u);
-    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportGetTextSlice, {
+    const slice = {
       revisionId: 'revision-1',
+      range: { offsetUnit: 'utf8-byte', startByte: 0, endByte: 6 },
       text: '正文',
-      totalByteLength: 6,
+      done: true,
+    } as const;
+    expect(validateCoreMethodResult(CORE_METHODS.novelImportGetTextSlice, slice)).toBe(slice);
+    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportGetTextSlice, {
+      revisionId: slice.revisionId,
+      range: slice.range,
+      text: slice.text,
+    })).toThrowError(/无效结果/u);
+    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportGetTextSlice, {
+      ...slice,
+      range: { ...slice.range, endByte: 5 },
+    })).toThrowError(/无效结果/u);
+  });
+
+  it('验证源文本预览的编码、游标和行数', () => {
+    const valid = {
+      sourceHash: 'a'.repeat(64),
+      sourceEncoding: 'gb2312',
+      startByte: 0,
+      endByte: 12,
+      text: '第一行\n',
+      completeLineCount: 1,
+      done: false,
+    } as const;
+    expect(validateCoreMethodResult(CORE_METHODS.novelImportGetSourcePreview, valid)).toBe(valid);
+    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportGetSourcePreview, {
+      ...valid,
+      sourceEncoding: 'utf-32',
+    })).toThrowError(/无效结果/u);
+    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportGetSourcePreview, {
+      ...valid,
+      endByte: -1,
     })).toThrowError(/无效结果/u);
   });
 
@@ -82,4 +114,105 @@ describe('core method result validation', () => {
       payload: { ...payload, sequence: 0 },
     })).toThrowError(/无效小说导入事件/u);
   });
+
+  it('深层验证章节快照的标题类型、范围、coverage 和 revision history', () => {
+    const snapshot = validReviewSnapshot();
+    expect(validateCoreMethodResult(CORE_METHODS.novelImportGetReviewSnapshot, snapshot))
+      .toBe(snapshot);
+    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportGetReviewSnapshot, {
+      ...snapshot,
+      chapters: [{ ...snapshot.chapters[0], headingKind: 'missing' }],
+    })).toThrowError(/无效结果/u);
+    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportGetReviewSnapshot, {
+      ...snapshot,
+      chapters: [{
+        ...snapshot.chapters[0],
+        contentRange: { ...snapshot.chapters[0].contentRange, endByte: 13 },
+      }],
+    })).toThrowError(/无效结果/u);
+    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportGetReviewSnapshot, {
+      ...snapshot,
+      coverage: {
+        ...snapshot.coverage,
+        segments: [{
+          ...snapshot.coverage.segments[0],
+          range: { offsetUnit: 'utf8-byte', startByte: 0, endByte: 11 },
+        }],
+      },
+    })).toThrowError(/无效结果/u);
+    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportGetReviewSnapshot, {
+      ...snapshot,
+      revisionHistory: [{ ...snapshot.revisionHistory[0], sourceHash: 'invalid' }],
+    })).toThrowError(/无效结果/u);
+  });
+
+  it('stale preview 仅接受已知章节复核命令类型和完整影响项', () => {
+    const preview = {
+      baselineRevision: 1,
+      commandType: 'update-chapter-structure',
+      affected: [{ artifactType: 'proofreading', artifactId: 'artifact-1', reason: '结构变化' }],
+      requiresConfirmation: true,
+    } as const;
+    expect(validateCoreMethodResult(CORE_METHODS.novelImportPreviewReview, preview)).toBe(preview);
+    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportPreviewReview, {
+      ...preview,
+      commandType: 'unknown-command',
+    })).toThrowError(/无效结果/u);
+    expect(() => validateCoreMethodResult(CORE_METHODS.novelImportPreviewReview, {
+      ...preview,
+      affected: [{ artifactType: 'proofreading', artifactId: 'artifact-1' }],
+    })).toThrowError(/无效结果/u);
+  });
 });
+
+function validReviewSnapshot() {
+  const revisionId = 'revision-1';
+  const createdAt = '2026-08-13T00:00:00.000Z';
+  return {
+    revisionId,
+    baselineRevision: 1,
+    source: {
+      sourceAssetId: 'source-1',
+      originalName: 'novel.txt',
+      byteLength: 12,
+      sha256: 'a'.repeat(64),
+    },
+    encoding: 'utf-8',
+    encodingMethod: 'strict-utf8',
+    textByteLength: 12,
+    chapters: [{
+      chapterId: 'chapter-1',
+      order: 1,
+      title: '第一章',
+      headingKind: 'source',
+      headingRange: { offsetUnit: 'utf8-byte', startByte: 0, endByte: 3 },
+      contentRange: { offsetUnit: 'utf8-byte', startByte: 4, endByte: 12 },
+      reviewStatus: 'pending',
+      lengthAnomalyAccepted: false,
+    }],
+    coverage: {
+      totalByteLength: 12,
+      classifiedByteLength: 12,
+      unclassifiedByteLength: 0,
+      complete: true,
+      segments: [{
+        classification: 'chapter',
+        range: { offsetUnit: 'utf8-byte', startByte: 0, endByte: 12 },
+        chapterId: 'chapter-1',
+      }],
+      uncoveredRanges: [],
+    },
+    revisionHistory: [{
+      revisionId,
+      baselineRevision: 1,
+      sourceHash: 'a'.repeat(64),
+      encoding: 'utf-8',
+      processorVersion: '2',
+      reviewStatus: 'pending',
+      active: true,
+      createdAt,
+    }],
+    reviewStatus: 'pending',
+    createdAt,
+  } as const;
+}

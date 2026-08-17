@@ -11,6 +11,7 @@ import { Buffer } from 'node:buffer';
 
 import { TextDecoder } from 'node:util';
 
+import chardet from 'chardet';
 import iconvLite from 'iconv-lite';
 import { invalidSource, NovelImportError } from './errors.ts';
 import {
@@ -18,6 +19,8 @@ import {
 } from './sourceAsset.ts';
 
 export const USER_SELECTED_TXT_SOURCE_ENCODINGS = [
+  'utf-8',
+  'gb2312',
   'gbk',
   'gb18030',
   'big5',
@@ -30,7 +33,7 @@ const INVALID_ICONV_SEQUENCE_MARKER = '\uDC00';
 type BomEncoding = 'utf-8' | 'utf-16le' | 'utf-16be' | 'utf-32le' | 'utf-32be';
 
 export interface ManualTxtEncodingSelection {
-  readonly sourceEncoding: UserSelectedTxtSourceEncoding;
+  readonly sourceEncoding: TxtSourceEncoding;
   readonly sourceHash: string;
 }
 
@@ -88,7 +91,7 @@ export function probeSourceAsset(asset: ProjectSourceAsset): NovelImportProbeDto
     const text = decodeUnicode(asset.bytes, 'utf-8');
     const issue = validateDecodedText(text);
     if (issue?.reason === 'binary-nul' && isPlausibleBomlessUtf16(asset.bytes)) {
-      return createProbe(asset, selectionRequired(sourceHash));
+      return createProbe(asset, selectionRequired(sourceHash, asset.bytes));
     }
     if (issue !== undefined)
       return createProbe(asset, rejected(sourceHash, issue.reason, issue.message));
@@ -99,7 +102,7 @@ export function probeSourceAsset(asset: ProjectSourceAsset): NovelImportProbeDto
       sourceHash,
     });
   } catch {
-    return createProbe(asset, selectionRequired(sourceHash));
+    return createProbe(asset, selectionRequired(sourceHash, asset.bytes));
   }
 }
 
@@ -114,25 +117,7 @@ export function decodeSourceAsset(
 
   let encoding: TxtSourceEncoding;
   let encodingMethod: TxtEncodingDecisionMethod;
-  if (decision.status === 'confirmed') {
-    if (selection !== undefined) {
-      throw invalidSource(
-        'encoding_selection_not_allowed',
-        '已由 BOM 或严格 UTF-8 确认编码，不允许手动覆盖。',
-      );
-    }
-    encoding = decision.encoding;
-    encodingMethod = decision.method;
-  } else {
-    if (selection === undefined) {
-      throw new NovelImportError(
-        'NOVEL_IMPORT_ENCODING_REQUIRED',
-        'encoding_selection_incomplete',
-        decision.message,
-        false,
-        { allowedEncodings: decision.allowedEncodings },
-      );
-    }
+  if (selection !== undefined) {
     if (selection.sourceHash !== decision.sourceHash) {
       throw invalidSource(
         'encoding_selection_source_mismatch',
@@ -145,15 +130,29 @@ export function decodeSourceAsset(
         '手动编码不在允许列表中。',
       );
     }
+  }
+  if (decision.status === 'confirmed') {
+    encoding = selection?.sourceEncoding ?? decision.encoding;
+    encodingMethod = selection && selection.sourceEncoding !== decision.encoding
+      ? 'user'
+      : decision.method;
+  } else {
+    if (selection === undefined) {
+      throw new NovelImportError(
+        'NOVEL_IMPORT_ENCODING_REQUIRED',
+        'encoding_selection_incomplete',
+        decision.message,
+        false,
+        { allowedEncodings: decision.allowedEncodings },
+      );
+    }
     encoding = selection.sourceEncoding;
     encodingMethod = 'user';
   }
 
   let text: string;
   try {
-    text = encoding === 'gbk' || encoding === 'gb18030' || encoding === 'big5'
-      ? decodeLegacy(asset.bytes, encoding)
-      : decodeUnicode(asset.bytes, encoding);
+    text = decodeSourceBytes(asset.bytes, encoding);
   } catch (error) {
     if (error instanceof NovelImportError)
       throw error;
@@ -178,19 +177,34 @@ export function decodeSourceAsset(
   };
 }
 
+export function decodeSourceBytes(
+  bytes: Uint8Array,
+  encoding: TxtSourceEncoding,
+  stripBom = true,
+): string {
+  return encoding === 'gb2312'
+    || encoding === 'gbk'
+    || encoding === 'gb18030'
+    || encoding === 'big5'
+    ? decodeLegacy(bytes, encoding, stripBom)
+    : decodeUnicode(bytes, encoding, stripBom);
+}
+
 function decodeUnicode(
   bytes: Uint8Array,
   encoding: 'utf-8' | 'utf-16le' | 'utf-16be',
+  stripBom = true,
 ): string {
   return new TextDecoder(encoding, {
     fatal: true,
-    ignoreBOM: false,
+    ignoreBOM: !stripBom,
   }).decode(bytes);
 }
 
 function decodeLegacy(
   bytes: Uint8Array,
-  encoding: 'gbk' | 'gb18030' | 'big5',
+  encoding: 'gb2312' | 'gbk' | 'gb18030' | 'big5',
+  stripBom = true,
 ): string {
   if (!iconvLite.encodingExists(encoding)) {
     throw invalidSource(
@@ -199,7 +213,7 @@ function decodeLegacy(
     );
   }
 
-  const decoder = iconvLite.getDecoder(encoding) as ReturnType<typeof iconvLite.getDecoder> & {
+  const decoder = iconvLite.getDecoder(encoding, { stripBOM: stripBom }) as ReturnType<typeof iconvLite.getDecoder> & {
     defaultCharUnicode?: string;
   };
   if (typeof decoder.defaultCharUnicode !== 'string') {
@@ -297,13 +311,35 @@ function rejected(
   return { status: 'rejected', sourceHash, reason, message };
 }
 
-function selectionRequired(sourceHash: string): NovelImportEncodingProbeDto {
+function selectionRequired(
+  sourceHash: string,
+  bytes: Uint8Array,
+): NovelImportEncodingProbeDto {
+  const recommendedEncoding = recommendEncoding(bytes);
   return {
     status: 'selection-required',
     allowedEncodings: USER_SELECTED_TXT_SOURCE_ENCODINGS,
+    ...(recommendedEncoding ? { recommendedEncoding } : {}),
     sourceHash,
     message: 'TXT 不是严格 UTF-8，请为当前源文件明确选择编码。',
   };
+}
+
+function recommendEncoding(bytes: Uint8Array): UserSelectedTxtSourceEncoding | undefined {
+  const candidates = chardet.analyse(bytes);
+  for (const candidate of candidates) {
+    switch (candidate.name) {
+      case 'GB18030':
+        return 'gb18030';
+      case 'Big5':
+        return 'big5';
+      case 'UTF-16LE':
+        return 'utf-16le';
+      case 'UTF-16BE':
+        return 'utf-16be';
+    }
+  }
+  return undefined;
 }
 
 function validateDecodedText(text: string): {

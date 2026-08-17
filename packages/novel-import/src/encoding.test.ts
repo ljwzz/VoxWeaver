@@ -17,7 +17,7 @@ import {
 
 const SOURCE_ASSET_ID = '11111111-1111-4111-8111-111111111111';
 
-test('probe confirms strict UTF-8 and prioritizes it over manual encodings', () => {
+test('probe confirms strict UTF-8 while allowing a hash-bound manual override', () => {
   const source = createAsset(Buffer.from('第一章 开始\n正文😀', 'utf8'));
   const probe = probeSourceAsset(source);
 
@@ -27,13 +27,19 @@ test('probe confirms strict UTF-8 and prioritizes it over manual encodings', () 
     method: 'strict-utf8',
     sourceHash: source.source.sha256,
   });
-  assert.throws(
-    () => decodeSourceAsset(source, {
-      sourceEncoding: 'gb18030',
-      sourceHash: source.source.sha256,
-    }),
-    hasReason('encoding_selection_not_allowed'),
-  );
+  const unchanged = decodeSourceAsset(source, {
+    sourceEncoding: 'utf-8',
+    sourceHash: source.source.sha256,
+  });
+  assert.equal(unchanged.encodingMethod, 'strict-utf8');
+
+  const asciiSource = createAsset(Buffer.from('Chapter 1\nPlain text', 'ascii'));
+  const overridden = decodeSourceAsset(asciiSource, {
+    sourceEncoding: 'gb18030',
+    sourceHash: asciiSource.source.sha256,
+  });
+  assert.equal(overridden.encoding, 'gb18030');
+  assert.equal(overridden.encodingMethod, 'user');
 });
 
 test('probe and decode support UTF-8, UTF-16LE, and UTF-16BE BOMs', () => {
@@ -111,8 +117,31 @@ test('non-UTF-8 input requires a hash-bound manual encoding selection', () => {
   );
 });
 
-test('manual decoding supports GBK, GB18030, Big5, and BOM-less UTF-16', () => {
+test('chardet only recommends a supported candidate for ambiguous input', () => {
+  const text = '这是用于编码检测的简体中文正文，包含常见汉字、标点和章节内容。'.repeat(12);
+  const source = createAsset(iconvLite.encode(text, 'gbk'));
+  const probe = probeSourceAsset(source);
+  assert.equal(probe.encoding.status, 'selection-required');
+  if (probe.encoding.status !== 'selection-required')
+    assert.fail('expected manual encoding selection');
+  assert.equal(probe.encoding.recommendedEncoding, 'gb18030');
+});
+
+test('chardet leaves the encoding unselected when no candidate can be mapped', () => {
+  const probe = probeSourceAsset(createAsset(Buffer.from([0x81])));
+  assert.equal(probe.encoding.status, 'selection-required');
+  if (probe.encoding.status !== 'selection-required')
+    assert.fail('expected manual encoding selection');
+  assert.equal(probe.encoding.recommendedEncoding, undefined);
+});
+
+test('manual decoding supports GB2312, GBK, GB18030, Big5, and BOM-less UTF-16', () => {
   const cases = [
+    {
+      encoding: 'gb2312' as const,
+      text: '第一章 开始\n简体正文',
+      bytes: iconvLite.encode('第一章 开始\n简体正文', 'gb2312'),
+    },
     {
       encoding: 'gbk' as const,
       text: '第一章 开始\n简体正文',
