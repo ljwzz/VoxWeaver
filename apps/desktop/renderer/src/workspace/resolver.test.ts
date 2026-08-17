@@ -50,11 +50,11 @@ function bootstrap(overrides: Partial<WorkspaceBootstrapDto> = {}): WorkspaceBoo
 }
 
 describe('workspace entry resolver', () => {
-  it('优先恢复运行中或可恢复任务', () => {
+  it('有效最后页面优先于运行中或可恢复任务', () => {
     expect(resolveWorkspaceEntry(bootstrap({
       currentTask: baseTask,
       lastPage: 'project-settings',
-    }))).toBe('text-extraction');
+    }))).toBe('project-settings');
 
     expect(resolveWorkspaceEntry(bootstrap({
       recoverableTasks: [{
@@ -63,13 +63,24 @@ describe('workspace entry resolver', () => {
         recoveryStatus: 'retryable',
       }],
       lastPage: 'project-settings',
-    }))).toBe('text-extraction');
+    }))).toBe('project-settings');
   });
 
-  it('无任务时优先返回最后一个有效正式页面', () => {
+  it('返回最后一个有效正式页面', () => {
     const lastPages: WorkspacePageKey[] = ['chapter-cover', 'software-settings'];
     for (const lastPage of lastPages)
       expect(resolveWorkspaceEntry(bootstrap({ lastPage }))).toBe(lastPage);
+  });
+
+  it('没有最后页面时恢复运行中或可恢复任务', () => {
+    expect(resolveWorkspaceEntry(bootstrap({ currentTask: baseTask }))).toBe('text-extraction');
+    expect(resolveWorkspaceEntry(bootstrap({
+      recoverableTasks: [{
+        ...baseTask,
+        status: 'failed',
+        recoveryStatus: 'retryable',
+      }],
+    }))).toBe('text-extraction');
   });
 
   it('再按阶段 01 状态进入文本提取或章节切割', () => {

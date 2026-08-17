@@ -9,11 +9,18 @@ import { getWorkspacePage } from '@/workspace/navigation';
 
 const route = useRoute();
 const page = computed(() => getWorkspacePage(route.meta.workspacePageKey as WorkspacePageKey));
+const pagesWithoutHeader = new Set<WorkspacePageKey>([
+  'proofreading',
+  'script-management',
+  'character-extraction',
+]);
+const showPageHeader = computed(() => !pagesWithoutHeader.has(page.value.key));
 </script>
 
 <template>
   <article class="gated-workspace-page">
     <WorkspacePageHeader
+      v-if="showPageHeader"
       :description="page.description"
       :stage-id="page.stageId"
       :title="page.label"

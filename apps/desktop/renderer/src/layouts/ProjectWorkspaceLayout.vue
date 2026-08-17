@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { WorkspaceModuleKey, WorkspacePageKey } from '@voxweaver/contracts';
 import type { Component } from 'vue';
+import type { NavigationFailure } from 'vue-router';
 import type {
   WorkspaceStatusBarItem,
 } from '@/workspace/statusBar';
@@ -35,6 +36,7 @@ const route = useRoute();
 const workspace = createWorkspaceContext();
 const actionError = shallowRef('');
 const lastRecordedPage = shallowRef<WorkspacePageKey>();
+const contextSidebarVisible = shallowRef(true);
 let coreHealthInterval: ReturnType<typeof setInterval> | undefined;
 
 provide(workspaceContextKey, workspace);
@@ -132,6 +134,21 @@ function capabilityClass(pageKey: WorkspacePageKey): string {
     return 'unknown';
   return capability.available ? 'available' : capability.reason;
 }
+
+function handleModuleClick(
+  event: MouseEvent,
+  moduleKey: WorkspaceModuleKey,
+  navigate: (event?: MouseEvent) => Promise<void | NavigationFailure>,
+): void {
+  if (moduleKey === activeModuleKey.value) {
+    event.preventDefault();
+    contextSidebarVisible.value = !contextSidebarVisible.value;
+    return;
+  }
+
+  contextSidebarVisible.value = true;
+  void navigate(event);
+}
 </script>
 
 <template>
@@ -140,44 +157,63 @@ function capabilityClass(pageKey: WorkspacePageKey): string {
       <span v-if="workspaceTitle">{{ workspaceTitle }}</span>
     </header>
 
-    <div class="project-workspace-body">
+    <div
+      class="project-workspace-body"
+      :class="{ 'project-workspace-body--sidebar-hidden': !contextSidebarVisible }"
+    >
       <nav class="project-activity-rail" aria-label="主模块">
         <div class="project-primary-modules">
           <RouterLink
             v-for="workspaceModule in primaryWorkspaceModules"
+            v-slot="{ href, navigate }"
             :key="workspaceModule.key"
-            class="project-activity-link"
-            :class="{ 'project-activity-link--current': workspaceModule.key === activeModuleKey }"
-            :aria-current="workspaceModule.key === activeModuleKey ? 'page' : undefined"
-            :title="workspaceModule.label"
+            custom
             :to="moduleTarget(workspaceModule.key)"
           >
-            <component :is="moduleIcons[workspaceModule.key]" :size="20" aria-hidden="true" />
-            <span>{{ workspaceModule.shortLabel }}</span>
+            <a
+              class="project-activity-link"
+              :class="{ 'project-activity-link--current': workspaceModule.key === activeModuleKey }"
+              :aria-current="workspaceModule.key === activeModuleKey ? 'page' : undefined"
+              aria-controls="project-context-sidebar"
+              :aria-expanded="workspaceModule.key === activeModuleKey ? contextSidebarVisible : false"
+              :href="href"
+              :title="workspaceModule.label"
+              @click="handleModuleClick($event, workspaceModule.key, navigate)"
+            >
+              <component :is="moduleIcons[workspaceModule.key]" :size="20" aria-hidden="true" />
+              <span>{{ workspaceModule.shortLabel }}</span>
+            </a>
           </RouterLink>
         </div>
 
         <div class="project-settings-entry">
           <RouterLink
-            class="project-activity-link"
-            :class="{ 'project-activity-link--current': settingsWorkspaceModule.key === activeModuleKey }"
-            :aria-current="settingsWorkspaceModule.key === activeModuleKey ? 'page' : undefined"
-            :title="settingsWorkspaceModule.label"
+            v-slot="{ href, navigate }"
+            custom
             :to="moduleTarget(settingsWorkspaceModule.key)"
           >
-            <component :is="moduleIcons[settingsWorkspaceModule.key]" :size="20" aria-hidden="true" />
-            <span>{{ settingsWorkspaceModule.shortLabel }}</span>
+            <a
+              class="project-activity-link"
+              :class="{ 'project-activity-link--current': settingsWorkspaceModule.key === activeModuleKey }"
+              :aria-current="settingsWorkspaceModule.key === activeModuleKey ? 'page' : undefined"
+              aria-controls="project-context-sidebar"
+              :aria-expanded="settingsWorkspaceModule.key === activeModuleKey ? contextSidebarVisible : false"
+              :href="href"
+              :title="settingsWorkspaceModule.label"
+              @click="handleModuleClick($event, settingsWorkspaceModule.key, navigate)"
+            >
+              <component :is="moduleIcons[settingsWorkspaceModule.key]" :size="20" aria-hidden="true" />
+              <span>{{ settingsWorkspaceModule.shortLabel }}</span>
+            </a>
           </RouterLink>
         </div>
       </nav>
 
-      <aside class="project-context-sidebar">
-        <header class="project-sidebar-header">
-          <p>当前模块</p>
-          <h1>{{ activeModule.label }}</h1>
-          <span :title="project?.sourceFileName">{{ project?.sourceFileName ?? '正在读取项目…' }}</span>
-        </header>
-
+      <aside
+        v-show="contextSidebarVisible"
+        id="project-context-sidebar"
+        class="project-context-sidebar"
+      >
         <nav class="project-page-navigation" :aria-label="`${activeModule.label}页面`">
           <RouterLink
             v-for="page in activeModule.pages"
@@ -234,7 +270,7 @@ function capabilityClass(pageKey: WorkspacePageKey): string {
   height: 32px;
   flex: 0 0 32px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   padding: 0 12px 0 78px;
   border-bottom: 1px solid var(--workspace-border);
   color: var(--workspace-muted);
@@ -250,6 +286,10 @@ function capabilityClass(pageKey: WorkspacePageKey): string {
   flex: 1;
   grid-template-columns: 52px 252px minmax(0, 1fr);
   overflow: hidden;
+}
+
+.project-workspace-body--sidebar-hidden {
+  grid-template-columns: 52px minmax(0, 1fr);
 }
 
 .project-activity-rail {
@@ -308,37 +348,6 @@ function capabilityClass(pageKey: WorkspacePageKey): string {
   overflow: hidden;
   border-right: 1px solid var(--workspace-border);
   background: #f5f6f3;
-}
-
-.project-sidebar-header {
-  padding: 16px 16px 12px;
-  border-bottom: 1px solid var(--workspace-border);
-}
-
-.project-sidebar-header p,
-.project-sidebar-header h1 {
-  margin: 0;
-}
-
-.project-sidebar-header p {
-  color: var(--workspace-muted);
-  font-size: 11px;
-}
-
-.project-sidebar-header h1 {
-  margin-top: 3px;
-  font-size: 17px;
-  line-height: 24px;
-}
-
-.project-sidebar-header span {
-  display: block;
-  margin-top: 7px;
-  overflow: hidden;
-  color: var(--workspace-muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .project-page-navigation {

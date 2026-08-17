@@ -2,6 +2,7 @@ import type {
   DesktopApi,
   TaskSummaryDto,
   WorkspaceBootstrapDto,
+  WorkspacePageKey,
 } from '@voxweaver/contracts';
 
 import { success, WORKSPACE_PAGE_KEYS } from '@voxweaver/contracts';
@@ -79,7 +80,10 @@ function createApi(bootstrapValue: WorkspaceBootstrapDto): DesktopApi {
   } as unknown as DesktopApi;
 }
 
-async function mountLayout(bootstrapValue: WorkspaceBootstrapDto = bootstrap) {
+async function mountLayout(
+  bootstrapValue: WorkspaceBootstrapDto = bootstrap,
+  initialPage: WorkspacePageKey = 'text-extraction',
+) {
   const api = createApi(bootstrapValue);
   Object.defineProperty(window, 'voxweaver', { configurable: true, value: api });
   const router = createRouter({
@@ -94,10 +98,11 @@ async function mountLayout(bootstrapValue: WorkspaceBootstrapDto = bootstrap) {
       path: `/${page.key}`,
     })),
   });
-  await router.push('/text-extraction');
+  await router.push(`/${initialPage}`);
   await router.isReady();
 
   const wrapper = mount(ProjectWorkspaceLayout, {
+    attachTo: document.body,
     global: {
       plugins: [router],
       stubs: {
@@ -106,7 +111,7 @@ async function mountLayout(bootstrapValue: WorkspaceBootstrapDto = bootstrap) {
     },
   });
   await flushPromises();
-  return { api, wrapper };
+  return { api, router, wrapper };
 }
 
 function styleRule(selector: string): string {
@@ -177,5 +182,46 @@ describe('project workspace locked chrome contract', () => {
     const railRule = styleRule('.project-activity-rail');
     expect(railRule).toMatch(/display:\s*flex;/);
     expect(railRule).toMatch(/justify-content:\s*space-between;/);
+  });
+
+  it('当前主模块只切换侧栏，跨模块才进入默认页面', async () => {
+    const { router, wrapper } = await mountLayout(bootstrap, 'chapter-splitting');
+    const body = wrapper.get('.project-workspace-body');
+    const sidebar = wrapper.get('.project-context-sidebar');
+    const activityLinks = wrapper.findAll('.project-activity-link');
+    const textLink = activityLinks.find(link => link.text() === '文本');
+    const roleLink = activityLinks.find(link => link.text() === '角色');
+    const chapterSplittingLink = wrapper.findAll('.project-page-link')
+      .find(link => link.text().includes('章节切割'));
+
+    expect(wrapper.find('.project-sidebar-header').exists()).toBe(false);
+    expect(sidebar.text()).not.toContain('当前模块');
+    expect(sidebar.text()).not.toContain('文本整理');
+    expect(sidebar.text()).not.toContain('novel.txt');
+    expect(textLink).toBeDefined();
+    expect(roleLink).toBeDefined();
+    expect(chapterSplittingLink?.attributes('aria-current')).toBe('page');
+    expect(router.currentRoute.value.path).toBe('/chapter-splitting');
+
+    await textLink!.trigger('click');
+    expect(body.classes()).toContain('project-workspace-body--sidebar-hidden');
+    expect(sidebar.isVisible()).toBe(false);
+    expect(router.currentRoute.value.path).toBe('/chapter-splitting');
+
+    await textLink!.trigger('click');
+    expect(body.classes()).not.toContain('project-workspace-body--sidebar-hidden');
+    expect(sidebar.isVisible()).toBe(true);
+    expect(router.currentRoute.value.path).toBe('/chapter-splitting');
+
+    await textLink!.trigger('click');
+    await roleLink!.trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/primary-character-marking');
+    expect(sidebar.isVisible()).toBe(true);
+
+    await roleLink!.trigger('click');
+    expect(sidebar.isVisible()).toBe(false);
+    expect(router.currentRoute.value.path).toBe('/primary-character-marking');
+    wrapper.unmount();
   });
 });

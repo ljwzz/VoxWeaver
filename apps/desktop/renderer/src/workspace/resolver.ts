@@ -29,15 +29,15 @@ function pageForPendingStage(stage: StageStateDto): WorkspacePageKey | undefined
 }
 
 export function resolveWorkspaceEntry(bootstrap: WorkspaceBootstrapDto): WorkspacePageKey {
+  if (isWorkspacePageKey(bootstrap.lastPage))
+    return bootstrap.lastPage;
+
   if (bootstrap.currentTask && isActiveOrRecoverableTask(bootstrap.currentTask))
     return pageForTask(bootstrap.currentTask);
 
   const recoverableTask = bootstrap.recoverableTasks.find(isActiveOrRecoverableTask);
   if (recoverableTask)
     return pageForTask(recoverableTask);
-
-  if (isWorkspacePageKey(bootstrap.lastPage))
-    return bootstrap.lastPage;
 
   for (const stage of bootstrap.stages) {
     if (stage.status === 'completed')
