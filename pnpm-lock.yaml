@@ -53,6 +53,15 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@codemirror/search':
+        specifier: 6.7.1
+        version: 6.7.1
+      '@codemirror/state':
+        specifier: 6.7.1
+        version: 6.7.1
+      '@codemirror/view':
+        specifier: 6.43.7
+        version: 6.43.7
       '@lucide/vue':
         specifier: 1.31.0
         version: 1.31.0(vue@3.5.41(typescript@6.0.3))
@@ -62,6 +71,9 @@ importers:
       '@voxweaver/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@voxweaver/novel-import':
+        specifier: workspace:*
+        version: link:../../packages/novel-import
       element-plus:
         specifier: 2.14.4
         version: 2.14.4(vue@3.5.41(typescript@6.0.3))
@@ -148,6 +160,9 @@ importers:
       '@voxweaver/contracts':
         specifier: workspace:*
         version: link:../contracts
+      chardet:
+        specifier: 2.2.0
+        version: 2.2.0
       iconv-lite:
         specifier: 0.7.3
         version: 0.7.3
@@ -318,6 +333,15 @@ packages:
   '@clack/prompts@1.7.0':
     resolution: {integrity: sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A==}
     engines: {node: '>= 20.12.0'}
+
+  '@codemirror/search@6.7.1':
+    resolution: {integrity: sha512-uMe5UO6PamJtSHrXhhHOzSX3ReWtiJrva6GnPMwSOrZtiExb5X5eExhr2OUZQVvdxPsKpY3Ro2mFbQadpPWmHA==}
+
+  '@codemirror/state@6.7.1':
+    resolution: {integrity: sha512-9QzNDgE4EYDnAHfrTlR2lwiPciiOymLtwKK+8yHQzCc7GXhAP9xdEbEJFy2IWB1j9UGUl9BsgMmTo/ImA02T7A==}
+
+  '@codemirror/view@6.43.7':
+    resolution: {integrity: sha512-FZsExxkoxnAN+d9TgqXLg5g4A1oQwzX9WlkOT5i2PKkcW7xx3Bmu0vs90g6fo9Mpdsb/l96dnAraQ8932aO4/g==}
 
   '@commitlint/cli@21.2.1':
     resolution: {integrity: sha512-blsZGe29hJ72VGEFVl72IVYX+1vsfINpjA9yWQA6i7OKD/McGEOXg08sKIRKjFk4JvzhV/9n0l3i6NooPLTNfg==}
@@ -820,6 +844,9 @@ packages:
   '@malept/cross-spawn-promise@2.0.0':
     resolution: {integrity: sha512-1DpKU0Z5ThltBwjNySMC14g0CkbyhCaz9FkhxqNsZI6uAPJXFS8cMXlBKo26FJ8ZuW6S9GCMcR9IO5k2X5/9Fg==}
     engines: {node: '>= 12.13.0'}
+
+  '@marijn/find-cluster-break@1.0.3':
+    resolution: {integrity: sha512-FY+MKLBoTsLNJF/eLWaOsXGdz6uh3Iu1axjPf6TUq92IYumcTcXWHoS747JARLkcdlJ/Waiaxc5wQfFO8jC6NA==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -1709,6 +1736,9 @@ packages:
   chardet@0.7.0:
     resolution: {integrity: sha512-mT8iDcrh03qDGRRmoA2hmBJnxpllMR+0/0qlzjqZES6NdiWDcZkCNAk4rPFZ9Q85r27unkiNNg8ZOiwZXBHwcA==}
 
+  chardet@2.2.0:
+    resolution: {integrity: sha512-rddelWYNPRrXq6PtNEN2S3f6t9ILzvqaN5pVgi4kqt9jHQaXIial9PznB5iSPVlQSLNaaH22ItWz3EJtQ10+OA==}
+
   chokidar@5.0.0:
     resolution: {integrity: sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw==}
     engines: {node: '>= 20.19.0'}
@@ -1860,6 +1890,9 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  crelt@1.0.7:
+    resolution: {integrity: sha512-aK6BbWfhf4U/wCcLHKPJl/xa6VkVstRaPywWtMKGwuOLc/wZTyQYuoxgvZnNsBvv7Kg3YTBQYYBCggcviQczuA==}
 
   cross-spawn@6.0.6:
     resolution: {integrity: sha512-VqCUuhcd1iB+dsv8gxPttb5iZh/D0iubSP21g36KXdEuf6I5JiioesUVjpCdHV9MZRUfVFlvwtIUyPfxo5trtw==}
@@ -4080,6 +4113,9 @@ packages:
     resolution: {integrity: sha512-k55yxKHwaXnpYGsOzg4Vl8+tDrWylxDEpknGjhTiZB8dFRU5rTo9CAzeycivxV3s+zlTKwrs6WxMxR95n26kwg==}
     engines: {node: '>=0.10.0'}
 
+  style-mod@4.1.3:
+    resolution: {integrity: sha512-i/n8VsZydrugj3Iuzll8+x/00GH2vnYsk1eomD8QiRrSAeW6ItbCQDtfXCeJHd0iwiNagqjQkvpvREEPtW3IoQ==}
+
   stylelint-config-html@2.0.0:
     resolution: {integrity: sha512-Lk1NPEdUxzHkPv3ehktjpiOk4MPaqQ3H8fkvhxdWlQpaZCm9ze0SoMbRQLqkUxEMfPE1G9/x968uxm/+d2njoA==}
     engines: {node: ^22.12 || >=24}
@@ -4519,6 +4555,9 @@ packages:
       typescript:
         optional: true
 
+  w3c-keyname@2.2.8:
+    resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
+
   watchpack@2.5.2:
     resolution: {integrity: sha512-6i/00NBjP4yGPs+caKSyRfpTF/8Torsu0MOW3mMzIbhgISFder8i7xbqgHlLMwJrdiN8ndBV3UA1/AfzPSr+jg==}
     engines: {node: '>=10.13.0'}
@@ -4795,6 +4834,23 @@ snapshots:
       fast-string-width: 3.0.2
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
+
+  '@codemirror/search@6.7.1':
+    dependencies:
+      '@codemirror/state': 6.7.1
+      '@codemirror/view': 6.43.7
+      crelt: 1.0.7
+
+  '@codemirror/state@6.7.1':
+    dependencies:
+      '@marijn/find-cluster-break': 1.0.3
+
+  '@codemirror/view@6.43.7':
+    dependencies:
+      '@codemirror/state': 6.7.1
+      crelt: 1.0.7
+      style-mod: 4.1.3
+      w3c-keyname: 2.2.8
 
   '@commitlint/cli@21.2.1(@types/node@24.13.3)(conventional-commits-parser@7.1.2)(typescript@6.0.3)':
     dependencies:
@@ -5619,6 +5675,8 @@ snapshots:
   '@malept/cross-spawn-promise@2.0.0':
     dependencies:
       cross-spawn: 7.0.6
+
+  '@marijn/find-cluster-break@1.0.3': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -6483,6 +6541,8 @@ snapshots:
 
   chardet@0.7.0: {}
 
+  chardet@2.2.0: {}
+
   chokidar@5.0.0:
     dependencies:
       readdirp: 5.1.1
@@ -6603,6 +6663,8 @@ snapshots:
       parse-json: 5.2.0
     optionalDependencies:
       typescript: 6.0.3
+
+  crelt@1.0.7: {}
 
   cross-spawn@6.0.6:
     dependencies:
@@ -9018,6 +9080,8 @@ snapshots:
     dependencies:
       escape-string-regexp: 1.0.5
 
+  style-mod@4.1.3: {}
+
   stylelint-config-html@2.0.0(postcss-html@2.0.0(postcss@8.5.26))(stylelint@17.14.1(typescript@6.0.3)):
     dependencies:
       postcss-html: 2.0.0(postcss@8.5.26)
@@ -9441,6 +9505,8 @@ snapshots:
       '@vue/shared': 3.5.41
     optionalDependencies:
       typescript: 6.0.3
+
+  w3c-keyname@2.2.8: {}
 
   watchpack@2.5.2:
     dependencies:
