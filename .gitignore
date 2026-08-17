@@ -1,7 +1,9 @@
 # Operating system and editors
 .DS_Store
 .idea/
-.vscode/
+.vscode/*
+!.vscode/electron.css-data.json
+!.vscode/settings.json
 *.swp
 
 # Environment and secrets

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vscode-css-languageservice/main/docs/customData.schema.json",
+  "version": 1.1,
+  "properties": [
+    {
+      "name": "app-region",
+      "description": "Defines draggable and interactive regions in a frameless Electron window. Supported values are drag and no-drag.",
+      "status": "nonstandard",
+      "references": [
+        {
+          "name": "Electron custom draggable regions",
+          "url": "https://www.electronjs.org/docs/latest/tutorial/custom-window-interactions#custom-draggable-regions"
+        }
+      ]
+    }
+  ]
+}
